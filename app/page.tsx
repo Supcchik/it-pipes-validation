@@ -47,6 +47,8 @@ export default function InspectionPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showEditSidebar, setShowEditSidebar] = useState(false);
   const [showQuickCreateDialog, setShowQuickCreateDialog] = useState(false);
+  const [showGalleryModal, setShowGalleryModal] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   
   // Resizable columns state
   const [leftColumnWidth, setLeftColumnWidth] = useState(50); // percentage
@@ -592,6 +594,24 @@ export default function InspectionPage() {
     // Тут можна додати логіку збереження
     showToast('Pipe information saved', 'success');
     setShowEditSidebar(false);
+  };
+
+  // Gallery functions
+  const openGallery = (index: number) => {
+    setSelectedImageIndex(index);
+    setShowGalleryModal(true);
+  };
+
+  const closeGallery = () => {
+    setShowGalleryModal(false);
+  };
+
+  const nextImage = () => {
+    setSelectedImageIndex(prev => (prev + 1) % observations.length);
+  };
+
+  const prevImage = () => {
+    setSelectedImageIndex(prev => (prev - 1 + observations.length) % observations.length);
   };
 
   return (
@@ -1150,6 +1170,10 @@ export default function InspectionPage() {
                       src={`https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=200&h=150&fit=crop&t=${index}`}
                       alt={`Screenshot at ${obs.timestamp}`}
                       className="w-full h-full object-cover"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openGallery(index);
+                      }}
                     />
                     <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-1 text-center">
                       {obs.timestamp}
@@ -2205,6 +2229,99 @@ export default function InspectionPage() {
               <Button onClick={savePipeInfo} className="bg-orange-500 hover:bg-orange-600">
                 Save changes
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gallery Modal */}
+      {showGalleryModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={closeGallery}>
+          <div className="relative max-w-6xl max-h-[90vh] w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            {/* Close Button */}
+            <button
+              onClick={closeGallery}
+              className="absolute top-4 right-4 z-10 bg-black/50 text-white rounded-full p-2 hover:bg-black/70 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Navigation Buttons */}
+            <button
+              onClick={prevImage}
+              className="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 text-white rounded-full p-3 hover:bg-black/70 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={nextImage}
+              className="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 bg-black/50 text-white rounded-full p-3 hover:bg-black/70 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+
+            {/* Image */}
+            <div className="bg-white rounded-lg overflow-hidden shadow-2xl">
+              <img
+                src={`https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=1200&h=800&fit=crop&t=${selectedImageIndex}`}
+                alt={`Screenshot ${selectedImageIndex + 1}`}
+                className="w-full h-auto max-h-[80vh] object-contain"
+              />
+              
+              {/* Image Info */}
+              <div className="p-4 bg-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Screenshot {selectedImageIndex + 1} of {observations.length}
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Timestamp: {observations[selectedImageIndex]?.timestamp} | 
+                      Code: {observations[selectedImageIndex]?.code} | 
+                      Distance: {observations[selectedImageIndex]?.distance}ft
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Grade:</span>
+                    <span 
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        observations[selectedImageIndex]?.grade >= 4 
+                          ? 'bg-red-100 text-red-800' 
+                          : observations[selectedImageIndex]?.grade >= 3 
+                          ? 'bg-orange-100 text-orange-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {observations[selectedImageIndex]?.grade}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Thumbnail Strip */}
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+              {observations.map((obs, index) => (
+                <button
+                  key={obs.id}
+                  onClick={() => setSelectedImageIndex(index)}
+                  className={`flex-shrink-0 w-16 h-12 rounded-lg overflow-hidden border-2 transition-colors ${
+                    index === selectedImageIndex 
+                      ? 'border-orange-500' 
+                      : 'border-transparent hover:border-gray-300'
+                  }`}
+                >
+                  <img
+                    src={`https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=100&h=80&fit=crop&t=${index}`}
+                    alt={`Thumbnail ${index + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
             </div>
           </div>
         </div>
