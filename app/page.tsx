@@ -591,23 +591,7 @@ export default function InspectionPage() {
   const savePipeInfo = () => {
     // Тут можна додати логіку збереження
     showToast('Pipe information saved', 'success');
-    setShowEditDialog(false);
-    
-    // Додаємо запис в change log
-    const newLogEntry: ChangeLogEntry = {
-      id: Date.now(),
-      user: 'Current User',
-      action: 'updated pipe information',
-      timestamp: new Date().toLocaleString('en-US', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit', 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      }),
-      details: 'Pipe segment details updated'
-    };
-    setChangeLog(prev => [newLogEntry, ...prev]);
+    setShowEditSidebar(false);
   };
 
   return (
