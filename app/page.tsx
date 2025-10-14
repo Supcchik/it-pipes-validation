@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Play, 
   Pause, 
@@ -53,12 +53,12 @@ export default function InspectionPage() {
   const [isResizing, setIsResizing] = useState(false);
 
   // Handle column resizing
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setIsResizing(true);
-  };
+  }, []);
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return;
     
     const containerWidth = window.innerWidth;
@@ -67,11 +67,11 @@ export default function InspectionPage() {
     // Set minimum width constraints (20% min, 80% max)
     const constrainedWidth = Math.max(20, Math.min(80, newLeftWidth));
     setLeftColumnWidth(constrainedWidth);
-  };
+  }, [isResizing]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsResizing(false);
-  };
+  }, []);
 
   // Add event listeners for mouse move and up
   useEffect(() => {
@@ -568,7 +568,8 @@ export default function InspectionPage() {
     
     const handleMouseMove = (e: MouseEvent) => {
       if (!e.currentTarget) return;
-      const rect = e.currentTarget.getBoundingClientRect();
+      const target = e.currentTarget as HTMLElement;
+      const rect = target.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const percentage = (x / rect.width) * 100;
       setSliderPosition(Math.max(0, Math.min(100, percentage)));
@@ -859,7 +860,8 @@ export default function InspectionPage() {
                     style={{ aspectRatio: '16/9' }}
                   onMouseDown={(e) => {
                     if (!e.currentTarget) return;
-                    const rect = e.currentTarget.getBoundingClientRect();
+                    const target = e.currentTarget as HTMLElement;
+                    const rect = target.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const percentage = (x / rect.width) * 100;
                     setSliderPosition(Math.max(0, Math.min(100, percentage)));
