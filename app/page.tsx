@@ -4,8 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   Play, 
   Pause, 
-  SkipBack, 
-  SkipForward, 
   Camera, 
   Download, 
   Plus, 
@@ -20,8 +18,7 @@ import {
   Volume2,
   Maximize,
   Minimize,
-  Link,
-  Send
+  Link
 } from 'lucide-react';
 import type { Observation, HotButton, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, ChangeLogEntry, Inspection, ComparisonLayout, ComparisonState } from '@/types/inspection';
 import { Button } from '@/components/ui/button';
@@ -91,7 +88,7 @@ export default function InspectionPage() {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-  }, [isResizing]);
+  }, [isResizing, handleMouseMove, handleMouseUp]);
   const [hoveredObservation, setHoveredObservation] = useState<number | null>(null);
   const [newHotButtonName, setNewHotButtonName] = useState('');
   
@@ -103,15 +100,6 @@ export default function InspectionPage() {
     downstreamManhole: 'MH-22'
   });
   
-  const [changeLog, setChangeLog] = useState<ChangeLogEntry[]>([
-    {
-      id: 1,
-      user: 'Adam Johnson',
-      action: 'updated diameter',
-      timestamp: '2025-04-10 11:22',
-      details: 'from 11 to 12 inches'
-    }
-  ]);
   
   const [observations, setObservations] = useState<Observation[]>([
     { 
@@ -173,7 +161,7 @@ export default function InspectionPage() {
     observations: observations
   });
 
-  const [previousInspections, setPreviousInspections] = useState<Inspection[]>([
+  const [previousInspections] = useState<Inspection[]>([
     {
       id: 1,
       date: '2024-01-15',
@@ -579,6 +567,7 @@ export default function InspectionPage() {
     e.preventDefault();
     
     const handleMouseMove = (e: MouseEvent) => {
+      if (!e.currentTarget) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const percentage = (x / rect.width) * 100;
@@ -869,6 +858,7 @@ export default function InspectionPage() {
                     className="relative bg-gray-900 rounded-lg overflow-hidden cursor-ew-resize"
                     style={{ aspectRatio: '16/9' }}
                   onMouseDown={(e) => {
+                    if (!e.currentTarget) return;
                     const rect = e.currentTarget.getBoundingClientRect();
                     const x = e.clientX - rect.left;
                     const percentage = (x / rect.width) * 100;
