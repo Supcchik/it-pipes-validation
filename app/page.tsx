@@ -20,7 +20,7 @@ import {
   Minimize,
   Link
 } from 'lucide-react';
-import type { Observation, HotButton, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, ChangeLogEntry, Inspection, ComparisonLayout, ComparisonState } from '@/types/inspection';
+import type { Observation, HotButton, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, Inspection, ComparisonLayout, ComparisonState } from '@/types/inspection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1255,7 +1255,7 @@ export default function InspectionPage() {
                           comparisonState.isActive && comparisonState.selectedInspection ? 
                             (obs.status === 'new' ? 'bg-green-50' : 
                              obs.status === 'modified' ? 'bg-orange-50' : 
-                             obs.status === 'removed' ? 'bg-red-50' : '') : ''
+                             'bg-white') : ''
                         }`}
                         onClick={() => handleObservationClick(obs)}
                         onContextMenu={(e) => handleContextMenu(e, obs)}
