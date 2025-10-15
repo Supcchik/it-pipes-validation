@@ -19,7 +19,7 @@ export interface Observation {
   remarks: string;
 }
 
-export interface HotButton {
+export interface QuickCode {
   id: number;
   name: string;
   code: string;
@@ -75,5 +75,9 @@ export interface ComparisonState {
   selectedInspection: Inspection | null;
   layout: ComparisonLayout;
   syncedPlayback: boolean;
+  currentVideoTime: number;
+  previousVideoTime: number;
+  currentVideoPlaying: boolean;
+  previousVideoPlaying: boolean;
 }
 

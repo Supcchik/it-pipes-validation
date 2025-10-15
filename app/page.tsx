@@ -6,9 +6,9 @@ import {
   Pause, 
   Camera, 
   Download, 
+  Upload,
   Plus, 
   Star, 
-  MoreVertical, 
   X, 
   Check, 
   Copy, 
@@ -20,7 +20,7 @@ import {
   Minimize,
   Link
 } from 'lucide-react';
-import type { Observation, HotButton, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, Inspection, ComparisonLayout, ComparisonState } from '@/types/inspection';
+import type { Observation, QuickCode, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, Inspection, ComparisonLayout, ComparisonState } from '@/types/inspection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,12 +35,16 @@ export default function InspectionPage() {
     isActive: false,
     selectedInspection: null,
     layout: 'vertical',
-    syncedPlayback: true
+    syncedPlayback: true,
+    currentVideoTime: 15,
+    previousVideoTime: 15,
+    currentVideoPlaying: false,
+    previousVideoPlaying: false
   });
   const [sliderPosition, setSliderPosition] = useState(50); // 0-100%
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [showHotButtonDialog, setShowHotButtonDialog] = useState(false);
+  const [showQuickCodeDialog, setShowQuickCodeDialog] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [videoTime, setVideoTime] = useState(15);
@@ -48,6 +52,7 @@ export default function InspectionPage() {
   const [showEditSidebar, setShowEditSidebar] = useState(false);
   const [showQuickCreateDialog, setShowQuickCreateDialog] = useState(false);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'video' | 'image'>('video');
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   
   // Resizable columns state
@@ -92,7 +97,11 @@ export default function InspectionPage() {
     };
   }, [isResizing, handleMouseMove, handleMouseUp]);
   const [hoveredObservation, setHoveredObservation] = useState<number | null>(null);
-  const [newHotButtonName, setNewHotButtonName] = useState('');
+  const [newQuickCodeName, setNewQuickCodeName] = useState('');
+  const [tabOrder, setTabOrder] = useState([
+    'code', 'distance', 'description', 'grade', 'value1', 'value2', 
+    'percent', 'continuous', 'joint', 'clock1', 'clock2', 'remarks'
+  ]);
   
   const [pipeInfo, setPipeInfo] = useState<PipeSegmentInfo>({
     reference: 'GM-MH-E23_MH-E22',
@@ -101,6 +110,48 @@ export default function InspectionPage() {
     upstreamManhole: 'MH-E231',
     downstreamManhole: 'MH-22'
   });
+
+  // Mock data for previous inspection
+  const previousInspection: Inspection = {
+    id: 2,
+    date: '2023-11-15',
+    observations: [
+      {
+        id: 101,
+        timestamp: '1:30.000',
+        distance: 10.5,
+        code: 'MLWE',
+        description: 'Minor lateral water entry',
+        grade: 4,
+        status: 'same',
+        continuous: 'No',
+        value1: '-',
+        value2: '-',
+        percent: '-',
+        joint: false,
+        clock1: '-',
+        clock2: '-',
+        remarks: 'Previous observation'
+      },
+      {
+        id: 102,
+        timestamp: '2:45.000',
+        distance: 16.8,
+        code: 'OBR',
+        description: 'Obstruction by roots',
+        grade: 2,
+        status: 'modified',
+        continuous: 'Yes',
+        value1: '3.2',
+        value2: '2.1',
+        percent: '65',
+        joint: true,
+        clock1: '12:00',
+        clock2: '2:30',
+        remarks: 'Root intrusion increased'
+      }
+    ]
+  };
   
   
   const [observations, setObservations] = useState<Observation[]>([
@@ -246,7 +297,7 @@ export default function InspectionPage() {
     }
   ]);
   
-  const [hotButtons, setHotButtons] = useState<HotButton[]>([
+  const [quickCodes, setQuickCodes] = useState<QuickCode[]>([
     { id: 1, name: 'Broken Pipe', code: 'BRK', icon: '🔨', description: 'Broken pipe section', grade: 5, usageCount: 12 },
     { id: 2, name: 'Roots', code: 'OBR', icon: '🌿', description: 'Tree roots intrusion', grade: 3, usageCount: 8 },
     { id: 3, name: 'Crack', code: 'CRK', icon: '⚡', description: 'Structural crack', grade: 4, usageCount: 5 },
@@ -370,7 +421,24 @@ export default function InspectionPage() {
   const handleCellKeyDown = (e: React.KeyboardEvent, obsId: number, field: string, value: string | number | boolean) => {
     if (e.key === 'Enter') {
       handleCellEdit(obsId, field, value);
-      setEditingCell(null);
+      // Перехід до наступного поля
+      const currentIndex = tabOrder.indexOf(field);
+      if (currentIndex < tabOrder.length - 1) {
+        const nextField = tabOrder[currentIndex + 1];
+        setEditingCell({ id: obsId, field: nextField });
+      } else {
+        setEditingCell(null);
+      }
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      handleCellEdit(obsId, field, value);
+      const currentIndex = tabOrder.indexOf(field);
+      const nextField = tabOrder[currentIndex + 1];
+      if (nextField) {
+        setEditingCell({ id: obsId, field: nextField });
+      } else {
+        setEditingCell(null);
+      }
     } else if (e.key === 'Escape') {
       setEditingCell(null);
     }
@@ -387,6 +455,14 @@ export default function InspectionPage() {
     showToast('Video download started', 'info');
   };
 
+  const exportReport = () => {
+    showToast('Report export started - this would generate a PDF', 'info');
+  };
+
+  const uploadVideo = () => {
+    showToast('Video upload started - this would upload to cloud storage', 'info');
+  };
+
   const deleteInspection = () => {
     setShowDeleteConfirm('inspection');
   };
@@ -401,14 +477,14 @@ export default function InspectionPage() {
     showToast('Inspection submitted for review', 'success');
   };
 
-  const addObservationFromHotButton = (hotButton: HotButton) => {
+  const addObservationFromQuickCode = (quickCode: QuickCode) => {
     const newObs: Observation = {
       id: Date.now(),
       timestamp: '0:00.000',
       distance: 0,
-      code: hotButton.code,
-      description: hotButton.description || hotButton.name,
-      grade: hotButton.grade || 3,
+      code: quickCode.code,
+      description: quickCode.description || quickCode.name,
+      grade: quickCode.grade || 3,
       status: 'new',
       continuous: 'No',
       value1: '-',
@@ -423,8 +499,8 @@ export default function InspectionPage() {
     setSelectedObservation(newObs.id);
     
     // Збільшуємо лічильник використання
-    setHotButtons(prev => prev.map(btn => 
-      btn.id === hotButton.id 
+    setQuickCodes(prev => prev.map(btn => 
+      btn.id === quickCode.id 
         ? { ...btn, usageCount: (btn.usageCount || 0) + 1 }
         : btn
     ));
@@ -480,15 +556,15 @@ export default function InspectionPage() {
     setShowDeleteConfirm(null);
   };
 
-  const saveAsHotButton = (obs: Observation) => {
-    setNewHotButtonName(obs.description);
+  const saveAsQuickCode = (obs: Observation) => {
+    setNewQuickCodeName(obs.description);
     setShowQuickCreateDialog(true);
     setContextMenu(null);
   };
 
-  const createHotButtonFromObservation = (obs: Observation, customName?: string) => {
+  const createQuickCodeFromObservation = (obs: Observation, customName?: string) => {
     const name = customName || obs.description || `Template ${obs.code}`;
-    const newHotButton: HotButton = {
+    const newQuickCode: QuickCode = {
       id: Date.now(),
       name: name,
       code: obs.code,
@@ -497,14 +573,14 @@ export default function InspectionPage() {
       grade: obs.grade,
       usageCount: 0
     };
-    setHotButtons([...hotButtons, newHotButton]);
+    setQuickCodes([...quickCodes, newQuickCode]);
     showToast('Hot button created and ready to use!', 'success');
     setShowQuickCreateDialog(false);
-    setNewHotButtonName('');
+    setNewQuickCodeName('');
   };
 
-  const createHotButtonFromScratch = () => {
-    const newHotButton: HotButton = {
+  const createQuickCodeFromScratch = () => {
+    const newQuickCode: QuickCode = {
       id: Date.now(),
       name: 'New Template',
       code: 'NEW',
@@ -513,12 +589,12 @@ export default function InspectionPage() {
       grade: 3,
       usageCount: 0
     };
-    setHotButtons([...hotButtons, newHotButton]);
+    setQuickCodes([...quickCodes, newQuickCode]);
     showToast('New hot button created', 'success');
   };
 
-  const removeHotButton = (buttonId: number) => {
-    setHotButtons(hotButtons.filter(b => b.id !== buttonId));
+  const removeQuickCode = (buttonId: number) => {
+    setQuickCodes(quickCodes.filter(b => b.id !== buttonId));
     showToast('Hot button removed', 'info');
   };
 
@@ -526,9 +602,38 @@ export default function InspectionPage() {
     setComparisonState(prev => ({
       ...prev,
       isActive: !prev.isActive,
-      selectedInspection: !prev.isActive ? null : prev.selectedInspection
+      selectedInspection: !prev.isActive ? previousInspection : null
     }));
     showToast(comparisonState.isActive ? 'Comparison mode disabled' : 'Comparison mode enabled', 'info');
+  };
+
+  // Functions for dual video control
+  const handleCurrentVideoPlay = () => {
+    setComparisonState(prev => ({
+      ...prev,
+      currentVideoPlaying: !prev.currentVideoPlaying
+    }));
+  };
+
+  const handlePreviousVideoPlay = () => {
+    setComparisonState(prev => ({
+      ...prev,
+      previousVideoPlaying: !prev.previousVideoPlaying
+    }));
+  };
+
+  const seekCurrentVideo = (time: number) => {
+    setComparisonState(prev => ({
+      ...prev,
+      currentVideoTime: time
+    }));
+  };
+
+  const seekPreviousVideo = (time: number) => {
+    setComparisonState(prev => ({
+      ...prev,
+      previousVideoTime: time
+    }));
   };
 
   const selectInspectionForComparison = (inspection: Inspection) => {
@@ -655,6 +760,24 @@ export default function InspectionPage() {
             >
               Send for Review
             </button>
+            
+            {/* Export/Upload Buttons */}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={exportReport}
+                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">Export Report</span>
+              </button>
+              <button 
+                onClick={uploadVideo}
+                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="hidden sm:inline">Upload Video</span>
+              </button>
+            </div>
             
             {/* Save and Exit */}
             <button className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600">
@@ -956,13 +1079,40 @@ export default function InspectionPage() {
             </div>
           ) : (
             <div className="flex flex-col">
+              {/* Video/Image Toggle */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('video')}
+                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                      viewMode === 'video' 
+                        ? 'bg-orange-500 text-white' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    📹 Video
+                  </button>
+                  <button
+                    onClick={() => setViewMode('image')}
+                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                      viewMode === 'image' 
+                        ? 'bg-orange-500 text-white' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    🖼️ Image
+                  </button>
+                </div>
+              </div>
+
               {/* Video Container with 16:9 aspect ratio */}
-              <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                <img 
-                  src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop" 
-                  alt="Pipe inspection"
-                  className="w-full h-full object-cover"
-                />
+              {viewMode === 'video' ? (
+                <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                  <img 
+                    src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop" 
+                    alt="Pipe inspection"
+                    className="w-full h-full object-cover"
+                  />
                 
                 {/* Video Controls */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
@@ -1113,7 +1263,32 @@ export default function InspectionPage() {
                   </button>
                 </div>
               </div>
-              
+            </div>
+          ) : (
+            // Image mode
+            <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+              {selectedObservation ? (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center text-white">
+                    <div className="text-6xl mb-4">📸</div>
+                    <div className="text-lg font-semibold">Screenshot View</div>
+                    <div className="text-sm text-gray-300 mt-2">
+                      Observation #{selectedObservation} - {observations.find(o => o.id === selectedObservation)?.timestamp}
+                    </div>
+                    <div className="text-sm text-gray-400 mt-1">
+                      Distance: {observations.find(o => o.id === selectedObservation)?.distance}ft
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center text-white">
+                    <div className="text-6xl mb-4">👆</div>
+                    <div className="text-lg font-semibold">Select an observation</div>
+                    <div className="text-sm text-gray-300 mt-2">to view screenshot</div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           
@@ -1581,22 +1756,15 @@ export default function InspectionPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  saveAsHotButton(obs);
+                                  saveAsQuickCode(obs);
                                 }}
                                 className="p-1.5 bg-orange-100 text-orange-600 rounded-full hover:bg-orange-200 transition-colors"
-                                title="Save as Hot Button"
+                                title="Save as Quick Code"
                               >
                                 <Star className="w-3 h-3" />
                               </button>
                             )}
                             
-                            {/* Context Menu Button */}
-                            <button 
-                              className="p-1 hover:bg-gray-200 rounded"
-                              onClick={(e) => handleContextMenu(e, obs)}
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-500" />
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1632,11 +1800,11 @@ export default function InspectionPage() {
             <span>Duplicate</span>
           </button>
           <button
-            onClick={() => saveAsHotButton(contextMenu.observation)}
+            onClick={() => saveAsQuickCode(contextMenu.observation)}
             className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-3"
           >
             <Star className="w-4 h-4 text-orange-500" />
-            <span>Save as Hot Button</span>
+            <span>Save as Quick Code</span>
           </button>
           <div className="h-px bg-gray-200 my-1"></div>
           <button
@@ -1691,27 +1859,27 @@ export default function InspectionPage() {
         </div>
       )}
 
-      {showHotButtonDialog && (
+      {showQuickCodeDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-3xl w-full shadow-2xl">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-semibold text-gray-900">Manage Hot Buttons</h3>
+              <h3 className="text-xl font-semibold text-gray-900">Manage Quick Codes</h3>
               <div className="flex items-center gap-2">
                 <Button 
-                  onClick={createHotButtonFromScratch}
+                  onClick={createQuickCodeFromScratch}
                   size="sm"
                   className="bg-orange-500 hover:bg-orange-600"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Create New
                 </Button>
-                <button onClick={() => setShowHotButtonDialog(false)} className="p-1 hover:bg-gray-100 rounded">
+                <button onClick={() => setShowQuickCodeDialog(false)} className="p-1 hover:bg-gray-100 rounded">
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
             <div className="space-y-3">
-              {hotButtons
+              {quickCodes
                 .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
                 .map(button => (
                 <div key={button.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
@@ -1744,7 +1912,7 @@ export default function InspectionPage() {
                       Edit
                     </Button>
                     <button 
-                      onClick={() => removeHotButton(button.id)} 
+                      onClick={() => removeQuickCode(button.id)} 
                       className="p-2 text-red-500 hover:bg-red-50 rounded"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1771,8 +1939,8 @@ export default function InspectionPage() {
               <Label htmlFor="templateName">Template Name</Label>
               <Input
                 id="templateName"
-                value={newHotButtonName}
-                onChange={(e) => setNewHotButtonName(e.target.value)}
+                value={newQuickCodeName}
+                onChange={(e) => setNewQuickCodeName(e.target.value)}
                 placeholder="Auto-generated if empty"
                 autoFocus
               />
@@ -1784,9 +1952,9 @@ export default function InspectionPage() {
             </Button>
             <Button 
               onClick={() => {
-                const obs = observations.find(o => o.description === newHotButtonName || o.id === hoveredObservation);
+                const obs = observations.find(o => o.description === newQuickCodeName || o.id === hoveredObservation);
                 if (obs) {
-                  createHotButtonFromObservation(obs, newHotButtonName);
+                  createQuickCodeFromObservation(obs, newQuickCodeName);
                 }
               }}
               className="bg-orange-500 hover:bg-orange-600"
@@ -1807,9 +1975,9 @@ export default function InspectionPage() {
           >
             <Zap className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
             {/* Usage indicator */}
-            {hotButtons.some(btn => (btn.usageCount || 0) > 0) && (
+            {quickCodes.some(btn => (btn.usageCount || 0) > 0) && (
               <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                {hotButtons.reduce((sum, btn) => sum + (btn.usageCount || 0), 0)}
+                {quickCodes.reduce((sum, btn) => sum + (btn.usageCount || 0), 0)}
               </div>
             )}
           </Button>
@@ -1823,7 +1991,7 @@ export default function InspectionPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Button 
-                  onClick={createHotButtonFromScratch}
+                  onClick={createQuickCodeFromScratch}
                   size="sm"
                   variant="outline"
                   className="text-xs"
@@ -1832,7 +2000,7 @@ export default function InspectionPage() {
                   New
                 </Button>
                 <Button 
-                  onClick={() => setShowHotButtonDialog(true)}
+                  onClick={() => setShowQuickCodeDialog(true)}
                   size="sm"
                   variant="outline"
                   className="text-xs"
@@ -1845,18 +2013,18 @@ export default function InspectionPage() {
             {/* Quick Stats */}
             <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-lg">
               <div className="text-center">
-                <div className="text-lg font-semibold text-gray-900">{hotButtons.length}</div>
+                <div className="text-lg font-semibold text-gray-900">{quickCodes.length}</div>
                 <div className="text-xs text-gray-500">Templates</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold text-orange-600">
-                  {hotButtons.reduce((sum, btn) => sum + (btn.usageCount || 0), 0)}
+                  {quickCodes.reduce((sum, btn) => sum + (btn.usageCount || 0), 0)}
                 </div>
                 <div className="text-xs text-gray-500">Uses</div>
               </div>
               <div className="text-center">
                 <div className="text-lg font-semibold text-green-600">
-                  {hotButtons.filter(btn => (btn.usageCount || 0) > 0).length}
+                  {quickCodes.filter(btn => (btn.usageCount || 0) > 0).length}
                 </div>
                 <div className="text-xs text-gray-500">Active</div>
               </div>
@@ -1866,16 +2034,16 @@ export default function InspectionPage() {
               <div className="flex items-center justify-between">
                 <div className="text-xs text-gray-500">Templates</div>
                 <div className="text-xs text-gray-400">
-                  {hotButtons.filter(btn => (btn.usageCount || 0) > 0).length} of {hotButtons.length} used
+                  {quickCodes.filter(btn => (btn.usageCount || 0) > 0).length} of {quickCodes.length} used
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto">
-                {hotButtons
+                {quickCodes
                   .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0))
                   .map(button => (
                   <button
                     key={button.id}
-                    onClick={() => addObservationFromHotButton(button)}
+                    onClick={() => addObservationFromQuickCode(button)}
                     className="flex items-center justify-between p-3 bg-gray-50 hover:bg-orange-50 rounded-lg transition-colors text-left group"
                   >
                     <div className="flex items-center gap-3">
