@@ -20,6 +20,7 @@ import {
   ChevronUp,
   ChevronDown,
   Minimize,
+  Maximize2,
   Link
 } from 'lucide-react';
 import type { Observation, QuickCode, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, Inspection, ComparisonLayout, ComparisonState } from '@/types/inspection';
@@ -106,6 +107,8 @@ export default function InspectionPage() {
   const [showNotes, setShowNotes] = useState(false);
   const [inspectionNotes, setInspectionNotes] = useState('');
   const [viewMode, setViewMode] = useState<'video' | 'image'>('video');
+  const [popoutWindow, setPopoutWindow] = useState<Window | null>(null);
+  const [isVideoPopedOut, setIsVideoPopedOut] = useState(false);
   
   const [pipeInfo, setPipeInfo] = useState<PipeSegmentInfo>({
     reference: 'GM-MH-E23_MH-E22',
@@ -471,6 +474,74 @@ export default function InspectionPage() {
     showToast('Notes saved', 'success');
     setShowNotes(false);
   };
+
+  const openVideoPopout = () => {
+    const newWindow = window.open('', 'videoPopout', 'width=800,height=600');
+    if (newWindow) {
+      newWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>ITpipes - Video Player</title>
+            <style>
+              body { margin: 0; padding: 20px; background: #000; color: white; font-family: system-ui; }
+              .video-container { width: 100%; max-width: 800px; margin: 0 auto; }
+              .controls { display: flex; gap: 10px; margin-top: 10px; justify-content: center; }
+              button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; }
+              .play-btn { background: #f97316; color: white; }
+              .info { text-align: center; margin-top: 10px; font-size: 14px; }
+            </style>
+          </head>
+          <body>
+            <div class="video-container">
+              <div style="width: 100%; aspect-ratio: 16/9; background: #333; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                <div style="text-align: center;">
+                  <div style="font-size: 48px; margin-bottom: 10px;">🎥</div>
+                  <div>Video Player</div>
+                  <div style="font-size: 14px; margin-top: 5px;">Time: ${Math.floor(videoTime / 60)}:${String(videoTime % 60).padStart(2, '0')}</div>
+                </div>
+              </div>
+              <div class="controls">
+                <button class="play-btn" onclick="parent.togglePlay()">${isPlaying ? '⏸️ Pause' : '▶️ Play'}</button>
+                <button onclick="parent.seekVideo(-5)">⏮️ -5s</button>
+                <button onclick="parent.seekVideo(5)">⏭️ +5s</button>
+              </div>
+              <div class="info">
+                ${selectedObservation ? `Current: Observation #${selectedObservation}` : 'No observation selected'}
+              </div>
+            </div>
+          </body>
+        </html>
+      `);
+      setPopoutWindow(newWindow);
+      setIsVideoPopedOut(true);
+      showToast('Video opened in pop-out window', 'info');
+    }
+  };
+
+  const closeVideoPopout = () => {
+    if (popoutWindow) {
+      popoutWindow.close();
+      setPopoutWindow(null);
+      setIsVideoPopedOut(false);
+      showToast('Video returned to main window', 'info');
+    }
+  };
+
+  // Expose functions to pop-out window
+  useEffect(() => {
+    (window as any).togglePlay = () => {
+      setIsPlaying(!isPlaying);
+    };
+    (window as any).seekVideo = (seconds: number) => {
+      setVideoTime(Math.max(0, Math.min(151, videoTime + seconds))); // 0-151 seconds (2:31)
+    };
+    
+    return () => {
+      delete (window as any).togglePlay;
+      delete (window as any).seekVideo;
+    };
+  }, [isPlaying, videoTime]);
 
   const deleteInspection = () => {
     setShowDeleteConfirm('inspection');
@@ -1115,6 +1186,26 @@ export default function InspectionPage() {
               </div>
 
               {/* Video Container with 16:9 aspect ratio */}
+              {isVideoPopedOut ? (
+                <div className="relative bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
+                  <div className="text-center text-white">
+                    <div className="text-6xl mb-4">🪟</div>
+                    <div className="text-lg font-semibold">Video is in pop-out window</div>
+                    <div className="text-sm text-gray-300 mt-2">
+                      Current time: {Math.floor(videoTime / 60)}:{String(videoTime % 60).padStart(2, '0')} / 2:31
+                    </div>
+                    <div className="text-sm text-gray-400 mt-1">
+                      Playing: {selectedObservation ? `Observation #${selectedObservation}` : 'No observation'}
+                    </div>
+                    <button
+                      onClick={closeVideoPopout}
+                      className="mt-4 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                    >
+                      Return Video to Main Window
+                    </button>
+                  </div>
+                </div>
+              ) : (
               <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
                 <img 
                   src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop" 
@@ -1165,6 +1256,15 @@ export default function InspectionPage() {
                       ) : (
                         <Maximize className="w-4 h-4" />
                       )}
+                    </button>
+                    
+                    {/* Pop-out Video */}
+                    <button 
+                      onClick={isVideoPopedOut ? closeVideoPopout : openVideoPopout}
+                      className="w-8 h-8 text-white/80 hover:text-white"
+                      title={isVideoPopedOut ? "Return video to main window" : "Open video in separate window"}
+                    >
+                      {isVideoPopedOut ? <Minimize className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
@@ -1271,6 +1371,7 @@ export default function InspectionPage() {
                   </button>
                 </div>
               </div>
+              )}
               
             </div>
           )}
