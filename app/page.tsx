@@ -109,6 +109,49 @@ export default function InspectionPage() {
   const [viewMode, setViewMode] = useState<'video' | 'image'>('video');
   const [popoutWindow, setPopoutWindow] = useState<Window | null>(null);
   const [isVideoPopedOut, setIsVideoPopedOut] = useState(false);
+  const [showComparisonModal, setShowComparisonModal] = useState(false);
+  
+  // Mock data for previous inspection comparison
+  const [comparisonPreviousInspection] = useState<Inspection>({
+    id: 2,
+    date: '2023-10-15',
+    observations: [
+      { 
+        id: 101, 
+        timestamp: '1:45.000', 
+        distance: 11, 
+        code: 'MLWE', 
+        description: 'Minor leak', 
+        grade: 2, 
+        status: 'same', 
+        continuous: 'No', 
+        value1: '-', 
+        value2: '-', 
+        percent: '5%', 
+        joint: false, 
+        clock1: '3 o\'clock', 
+        clock2: '9 o\'clock', 
+        remarks: 'Small leak' 
+      },
+      { 
+        id: 102, 
+        timestamp: '3:00.000', 
+        distance: 14, 
+        code: 'OBR', 
+        description: 'Tree roots', 
+        grade: 2, 
+        status: 'same', 
+        continuous: 'Yes', 
+        value1: '2', 
+        value2: '4', 
+        percent: '15%', 
+        joint: false, 
+        clock1: '12 o\'clock', 
+        clock2: '6 o\'clock', 
+        remarks: 'Root intrusion' 
+      },
+    ]
+  });
   
   const [pipeInfo, setPipeInfo] = useState<PipeSegmentInfo>({
     reference: 'GM-MH-E23_MH-E22',
@@ -528,6 +571,400 @@ export default function InspectionPage() {
     }
   };
 
+  const openComparisonModal = () => {
+    if (selectedObservation && comparisonState.isActive) {
+      setShowComparisonModal(true);
+    } else {
+      showToast('Please select an observation and enable comparison mode first', 'warning');
+    }
+  };
+
+  // Comparison Video Player Component
+  const ComparisonVideoPlayer = () => (
+    <div className={`${comparisonState.layout === 'vertical' ? 'grid grid-rows-2' : 'grid grid-cols-2'} gap-4`}>
+      {/* Current Video */}
+      <div className="relative">
+        <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Current</span>
+          <span>Inspection ({currentInspection.date})</span>
+        </div>
+        <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+          <img 
+            src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop" 
+            alt="Current inspection"
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute bottom-4 left-4 text-white text-sm bg-black/50 px-2 py-1 rounded">
+            ▶️ {Math.floor(comparisonState.currentVideoTime / 60)}:{String(comparisonState.currentVideoTime % 60).padStart(2, '0')} / 2:31
+          </div>
+          <div className="absolute bottom-4 right-4">
+            <button
+              onClick={handleCurrentVideoPlay}
+              className="w-8 h-8 text-white/80 hover:text-white"
+              title={comparisonState.currentVideoPlaying ? "Pause current video" : "Play current video"}
+            >
+              {comparisonState.currentVideoPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      {/* Previous Video */}
+      <div className="relative">
+        <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+          <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">Previous</span>
+          <span>Inspection ({comparisonPreviousInspection.date})</span>
+        </div>
+        <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+          <img 
+            src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop" 
+            alt="Previous inspection"
+            className="w-full h-full object-cover"
+            style={{
+              filter: 'sepia(100%) hue-rotate(200deg) saturate(1.5) contrast(1.2)',
+              opacity: 0.9
+            }}
+          />
+          <div className="absolute bottom-4 left-4 text-white text-sm bg-black/50 px-2 py-1 rounded">
+            ▶️ {Math.floor(comparisonState.previousVideoTime / 60)}:{String(comparisonState.previousVideoTime % 60).padStart(2, '0')} / 2:45
+          </div>
+          <div className="absolute bottom-4 right-4">
+            <button
+              onClick={() => setComparisonState(prev => ({
+                ...prev,
+                previousVideoPlaying: !prev.previousVideoPlaying
+              }))}
+              className="w-8 h-8 text-white/80 hover:text-white"
+              title={comparisonState.previousVideoPlaying ? "Pause previous video" : "Play previous video"}
+            >
+              {comparisonState.previousVideoPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Screenshot Comparison Modal Component
+  const ScreenshotComparisonModal = () => {
+    const [sliderPosition, setSliderPosition] = useState(50);
+    
+    if (!showComparisonModal) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={() => setShowComparisonModal(false)}>
+        <div className="relative max-w-4xl max-h-[90vh] w-full mx-4 bg-white rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900">Screenshot Comparison</h3>
+            <button 
+              onClick={() => setShowComparisonModal(false)}
+              className="p-1 hover:bg-gray-100 rounded"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          
+          <div className="p-4">
+            <div className="relative" style={{ aspectRatio: '16/9' }}>
+              {/* Previous Screenshot */}
+              <div className="absolute inset-0 overflow-hidden">
+                <div className="w-full h-full bg-gradient-to-r from-blue-100 to-blue-200 flex items-center justify-center">
+                  <div className="text-center text-blue-800">
+                    <div className="text-4xl mb-2">📸</div>
+                    <div className="font-semibold">Previous (2023)</div>
+                    <div className="text-sm">Grade: 2</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Current Screenshot */}
+              <div 
+                className="absolute inset-0 overflow-hidden"
+                style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
+              >
+                <div className="w-full h-full bg-gradient-to-r from-orange-100 to-orange-200 flex items-center justify-center">
+                  <div className="text-center text-orange-800">
+                    <div className="text-4xl mb-2">📸</div>
+                    <div className="font-semibold">Current (2024)</div>
+                    <div className="text-sm">Grade: 3 🔺+1</div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Slider */}
+              <div className="absolute inset-0 pointer-events-none">
+                <div 
+                  className="absolute top-0 bottom-0 w-1 bg-white shadow-lg"
+                  style={{ left: `${sliderPosition}%` }}
+                >
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Slider Input */}
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={sliderPosition}
+                onChange={(e) => setSliderPosition(parseInt(e.target.value))}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-ew-resize z-10"
+              />
+            </div>
+            
+            <div className="flex items-center justify-between mt-4">
+              <div className="text-sm text-gray-600">
+                Distance: {observations.find(o => o.id === selectedObservation)?.distance}ft
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Previous</span>
+                <span className="text-sm font-medium">{sliderPosition}%</span>
+                <span className="text-sm text-gray-600">Current</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Comparison Tables Component
+  const ComparisonTables = () => {
+    const [showPreviousTable, setShowPreviousTable] = useState(false);
+    
+    return (
+      <div className="space-y-6">
+        {/* Current Observations Table */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">Current</span>
+              <span>Inspection ({currentInspection.date})</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={openComparisonModal}
+                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+              >
+                📸⚡ Compare Screenshots
+              </button>
+              <button 
+                onClick={addNewObservation}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm font-medium flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add Observation
+              </button>
+            </div>
+          </div>
+          {/* Current table - full version */}
+          {observations.length === 0 ? (
+            <div className="text-center py-8 border border-gray-200 rounded-lg">
+              <div className="text-4xl mb-2">🔍</div>
+              <h4 className="text-sm font-medium text-gray-900 mb-1">No observations yet</h4>
+              <p className="text-xs text-gray-600">Start by using a Quick Action</p>
+            </div>
+          ) : (
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[1200px]">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">TIMESTAMP</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">DISTANCE (FT)</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">CODE</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">CONTINUOUS</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">VALUE 1</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">VALUE 2</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">PERCENT</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">JOINT</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">CLOCK 1</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">CLOCK 2</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">GRADE</th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">REMARKS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {observations.map((obs) => (
+                      <tr 
+                        key={obs.id}
+                        className={`hover:bg-gray-50 cursor-pointer ${
+                          selectedObservation === obs.id ? 'bg-blue-50' : ''
+                        }`}
+                        onClick={() => setSelectedObservation(obs.id)}
+                      >
+                        {/* TIMESTAMP - Read only */}
+                        <td className="px-3 py-3 font-mono text-xs text-gray-600">
+                          {obs.timestamp}
+                        </td>
+                        
+                        {/* DISTANCE - Read only */}
+                        <td className="px-3 py-3 font-mono text-xs text-gray-600">
+                          {obs.distance}ft
+                        </td>
+                        
+                        {/* CODE - Read only */}
+                        <td className="px-3 py-3">
+                          <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">
+                            {obs.code}
+                          </span>
+                        </td>
+                        
+                        {/* CONTINUOUS - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600">
+                          {obs.continuous}
+                        </td>
+                        
+                        {/* VALUE 1 - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600">
+                          {obs.value1}
+                        </td>
+                        
+                        {/* VALUE 2 - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600">
+                          {obs.value2}
+                        </td>
+                        
+                        {/* PERCENT - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600">
+                          {obs.percent}
+                        </td>
+                        
+                        {/* JOINT - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600">
+                          {obs.joint ? 'Yes' : 'No'}
+                        </td>
+                        
+                        {/* CLOCK 1 - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600">
+                          {obs.clock1}
+                        </td>
+                        
+                        {/* CLOCK 2 - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600">
+                          {obs.clock2}
+                        </td>
+                        
+                        {/* GRADE - Read only */}
+                        <td className="px-3 py-3 text-center">
+                          <div 
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                            style={{ backgroundColor: obs.grade >= 4 ? '#ef4444' : obs.grade >= 3 ? '#f59e0b' : '#10b981' }}
+                          >
+                            {obs.grade}
+                          </div>
+                        </td>
+                        
+                        {/* REMARKS - Read only */}
+                        <td className="px-3 py-3 text-xs text-gray-600 max-w-[200px] truncate">
+                          {obs.remarks}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Previous Observations Table - Collapsible */}
+        <div className="border border-gray-200 rounded-lg">
+          <button
+            onClick={() => setShowPreviousTable(!showPreviousTable)}
+            className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📋</span>
+              <span className="font-medium flex items-center gap-2">
+                <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">Previous</span>
+                <span>Inspection ({comparisonPreviousInspection.date})</span>
+              </span>
+              <span className="text-sm text-gray-500">
+                ({comparisonPreviousInspection.observations.length} observations)
+              </span>
+            </div>
+            {showPreviousTable ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+          
+          {showPreviousTable && (
+            <div className="border-t border-gray-200">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[1200px]">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">TIMESTAMP</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">DISTANCE (FT)</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">CODE</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">CONTINUOUS</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">VALUE 1</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">VALUE 2</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">PERCENT</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">JOINT</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">CLOCK 1</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">CLOCK 2</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">GRADE</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">REMARKS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {comparisonPreviousInspection.observations.map((obs) => (
+                      <tr 
+                        key={obs.id}
+                        className="hover:bg-gray-50 cursor-pointer"
+                        onClick={() => {
+                          // Sync previous video to this observation
+                          const timeParts = obs.timestamp.split(':');
+                          const minutes = parseInt(timeParts[0]);
+                          const seconds = parseFloat(timeParts[1]);
+                          setComparisonState(prev => ({
+                            ...prev,
+                            previousVideoTime: minutes * 60 + seconds
+                          }));
+                          showToast('Previous video synced to observation', 'info');
+                        }}
+                      >
+                        <td className="px-3 py-2 font-mono text-xs text-gray-600">{obs.timestamp}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.distance}ft</td>
+                        <td className="px-3 py-2">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                            {obs.code}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.continuous}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.value1}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.value2}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.percent}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.joint ? 'Yes' : 'No'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.clock1}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{obs.clock2}</td>
+                        <td className="px-3 py-2 text-center">
+                          <div 
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                            style={{ backgroundColor: obs.grade >= 4 ? '#ef4444' : obs.grade >= 3 ? '#f59e0b' : '#10b981' }}
+                          >
+                            {obs.grade}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-600 max-w-[200px] truncate">{obs.remarks}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // Expose functions to pop-out window
   useEffect(() => {
     (window as any).togglePlay = () => {
@@ -682,7 +1119,7 @@ export default function InspectionPage() {
     setComparisonState(prev => ({
       ...prev,
       isActive: !prev.isActive,
-      selectedInspection: !prev.isActive ? previousInspection : null
+      selectedInspection: !prev.isActive ? comparisonPreviousInspection : null
     }));
     showToast(comparisonState.isActive ? 'Comparison mode disabled' : 'Comparison mode enabled', 'info');
   };
@@ -730,7 +1167,7 @@ export default function InspectionPage() {
     showToast(`Switched to ${inspection.date}`, 'info');
   };
 
-  const changeComparisonLayout = (layout: ComparisonLayout) => {
+  const changeComparisonLayout = (layout: 'vertical' | 'horizontal') => {
     setComparisonState(prev => ({
       ...prev,
       layout
@@ -945,7 +1382,7 @@ export default function InspectionPage() {
                   <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                     <span className="text-sm font-medium text-gray-600">Layout:</span>
                     <div className="flex gap-1">
-                      {(['vertical', 'slider'] as ComparisonLayout[]).map((layout) => (
+                      {(['vertical', 'horizontal'] as const).map((layout) => (
                         <button
                           key={layout}
                           onClick={() => changeComparisonLayout(layout)}
@@ -978,7 +1415,8 @@ export default function InspectionPage() {
               </div>
 
               {/* Video Comparison Views */}
-              {comparisonState.layout === 'vertical' && (
+              <ComparisonVideoPlayer />
+              {false && comparisonState.layout === 'vertical' && (
                 <div className="flex flex-col gap-2 items-center">
                   {/* Current Video - Top */}
                   <div className="relative bg-gray-900 rounded-lg overflow-hidden w-full" style={{ aspectRatio: '16/9', maxWidth: '533px' }}>
@@ -1029,7 +1467,7 @@ export default function InspectionPage() {
                       }}
                     />
                     <div className="absolute top-2 left-2 bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium">
-                      📅 Previous {comparisonState.selectedInspection.date}
+                      📅 Previous {comparisonState.selectedInspection?.date || 'N/A'}
                     </div>
                     
                     {/* Video Controls */}
@@ -1060,7 +1498,7 @@ export default function InspectionPage() {
                 </div>
               )}
 
-              {comparisonState.layout === 'slider' && (
+              {false && (
                 <div className="flex justify-center">
                   <div 
                     className="relative bg-gray-900 rounded-lg overflow-hidden cursor-ew-resize"
@@ -1115,7 +1553,7 @@ export default function InspectionPage() {
                     📅 Current Nov 2024
                   </div>
                   <div className="absolute top-2 right-2 bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium z-10">
-                    📅 Previous {comparisonState.selectedInspection.date}
+                    📅 Previous {comparisonState.selectedInspection?.date || 'N/A'}
                   </div>
                   
                   {/* Video Controls */}
@@ -1557,7 +1995,9 @@ export default function InspectionPage() {
               </div>
             )}
 
-            {observations.length === 0 ? (
+            {comparisonState.isActive ? (
+              <ComparisonTables />
+            ) : observations.length === 0 ? (
               <div className="text-center py-16">
                 <div className="text-6xl mb-4">🔍</div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">No observations yet</h3>
@@ -1916,6 +2356,7 @@ export default function InspectionPage() {
             )}
           </div>
         </div>
+            )
       </div>
 
       {toast && (
@@ -2634,6 +3075,9 @@ export default function InspectionPage() {
           </div>
         </div>
       )}
+      
+      {/* Screenshot Comparison Modal */}
+      <ScreenshotComparisonModal />
     </div>
   );
 }

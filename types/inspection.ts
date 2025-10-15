@@ -68,12 +68,12 @@ export interface Inspection {
   videoUrl?: string;
 }
 
-export type ComparisonLayout = 'vertical' | 'slider';
+export type ComparisonLayout = 'vertical' | 'horizontal' | 'slider';
 
 export interface ComparisonState {
   isActive: boolean;
   selectedInspection: Inspection | null;
-  layout: ComparisonLayout;
+  layout: 'vertical' | 'horizontal'; // Changed from ComparisonLayout for simplicity
   syncedPlayback: boolean;
   currentVideoTime: number;
   previousVideoTime: number;
