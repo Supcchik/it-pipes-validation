@@ -5,8 +5,8 @@ import {
   Play, 
   Pause, 
   Camera, 
-  Download, 
-  Upload,
+  Download,
+  Upload, 
   Plus, 
   Star, 
   X, 
@@ -52,7 +52,6 @@ export default function InspectionPage() {
   const [showEditSidebar, setShowEditSidebar] = useState(false);
   const [showQuickCreateDialog, setShowQuickCreateDialog] = useState(false);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'video' | 'image'>('video');
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   
   // Resizable columns state
@@ -1079,40 +1078,13 @@ export default function InspectionPage() {
             </div>
           ) : (
             <div className="flex flex-col">
-              {/* Video/Image Toggle */}
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => setViewMode('video')}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                      viewMode === 'video' 
-                        ? 'bg-orange-500 text-white' 
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    📹 Video
-                  </button>
-                  <button
-                    onClick={() => setViewMode('image')}
-                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                      viewMode === 'image' 
-                        ? 'bg-orange-500 text-white' 
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    🖼️ Image
-                  </button>
-                </div>
-              </div>
-
               {/* Video Container with 16:9 aspect ratio */}
-              {viewMode === 'video' ? (
-                <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                  <img 
-                    src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop" 
-                    alt="Pipe inspection"
-                    className="w-full h-full object-cover"
-                  />
+              <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                <img 
+                  src="https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop" 
+                  alt="Pipe inspection"
+                  className="w-full h-full object-cover"
+                />
                 
                 {/* Video Controls */}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
@@ -1263,32 +1235,7 @@ export default function InspectionPage() {
                   </button>
                 </div>
               </div>
-            </div>
-          ) : (
-            // Image mode
-            <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-              {selectedObservation ? (
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <div className="text-6xl mb-4">📸</div>
-                    <div className="text-lg font-semibold">Screenshot View</div>
-                    <div className="text-sm text-gray-300 mt-2">
-                      Observation #{selectedObservation} - {observations.find(o => o.id === selectedObservation)?.timestamp}
-                    </div>
-                    <div className="text-sm text-gray-400 mt-1">
-                      Distance: {observations.find(o => o.id === selectedObservation)?.distance}ft
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <div className="text-6xl mb-4">👆</div>
-                    <div className="text-lg font-semibold">Select an observation</div>
-                    <div className="text-sm text-gray-300 mt-2">to view screenshot</div>
-                  </div>
-                </div>
-              )}
+              
             </div>
           )}
           
