@@ -17,6 +17,8 @@ import {
   Eye,
   Volume2,
   Maximize,
+  ChevronUp,
+  ChevronDown,
   Minimize,
   Link
 } from 'lucide-react';
@@ -101,6 +103,9 @@ export default function InspectionPage() {
     'code', 'distance', 'description', 'grade', 'value1', 'value2', 
     'percent', 'continuous', 'joint', 'clock1', 'clock2', 'remarks'
   ]);
+  const [showNotes, setShowNotes] = useState(false);
+  const [inspectionNotes, setInspectionNotes] = useState('');
+  const [viewMode, setViewMode] = useState<'video' | 'image'>('video');
   
   const [pipeInfo, setPipeInfo] = useState<PipeSegmentInfo>({
     reference: 'GM-MH-E23_MH-E22',
@@ -460,6 +465,11 @@ export default function InspectionPage() {
 
   const uploadVideo = () => {
     showToast('Video upload started - this would upload to cloud storage', 'info');
+  };
+
+  const saveNotes = () => {
+    showToast('Notes saved', 'success');
+    setShowNotes(false);
   };
 
   const deleteInspection = () => {
@@ -1078,6 +1088,32 @@ export default function InspectionPage() {
             </div>
           ) : (
             <div className="flex flex-col">
+              {/* Video/Image Toggle */}
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('video')}
+                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                      viewMode === 'video' 
+                        ? 'bg-orange-500 text-white' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    📹 Video
+                  </button>
+                  <button
+                    onClick={() => setViewMode('image')}
+                    className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
+                      viewMode === 'image' 
+                        ? 'bg-orange-500 text-white' 
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    🖼️ Image
+                  </button>
+                </div>
+              </div>
+
               {/* Video Container with 16:9 aspect ratio */}
               <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
                 <img 
@@ -1312,6 +1348,62 @@ export default function InspectionPage() {
             </div>
             <div className="text-xs text-gray-500 mt-2">
               Click any screenshot to jump to that time in the video
+            </div>
+          </div>
+
+          {/* Notes Section */}
+          <div className="mt-4">
+            <div className="bg-white border border-gray-200 rounded-lg">
+              <button
+                onClick={() => setShowNotes(!showNotes)}
+                className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📝</span>
+                  <span className="font-medium">Notes</span>
+                  {inspectionNotes && (
+                    <span className="text-sm text-gray-500">
+                      ({inspectionNotes.split('\n').length} lines)
+                    </span>
+                  )}
+                </div>
+                {showNotes ? (
+                  <ChevronUp className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                )}
+              </button>
+              
+              {showNotes && (
+                <div className="px-4 pb-4 border-t border-gray-200">
+                  <textarea
+                    value={inspectionNotes}
+                    onChange={(e) => setInspectionNotes(e.target.value)}
+                    onBlur={saveNotes}
+                    placeholder="Add general notes about this inspection..."
+                    className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-xs text-gray-500">
+                      {inspectionNotes.length}/5000 characters
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setInspectionNotes('')}
+                        className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        onClick={saveNotes}
+                        className="px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
