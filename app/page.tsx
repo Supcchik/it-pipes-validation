@@ -19,12 +19,16 @@ import {
   Maximize,
   ChevronUp,
   ChevronDown,
+  ChevronLeft,
   Minimize,
   Maximize2,
   Link,
   MoreVertical,
   Edit,
-  ExternalLink
+  ExternalLink,
+  Pin,
+  PinOff,
+  GripVertical
 } from 'lucide-react';
 import type { Observation, QuickCode, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, Inspection, ComparisonLayout, ComparisonState, Screenshot, ScreenshotComparisonState, ScreenshotComparisonLayout } from '@/types/inspection';
 import { Button } from '@/components/ui/button';
@@ -111,10 +115,19 @@ export default function InspectionPage() {
   ]);
   const [showNotes, setShowNotes] = useState(false);
   const [inspectionNotes, setInspectionNotes] = useState('');
+  const [isNotesPinned, setIsNotesPinned] = useState(false);
+  const [notesPosition, setNotesPosition] = useState({ x: 100, y: 100 });
+  const [notesSize, setNotesSize] = useState({ width: 400, height: 300 });
+  const [isNotesDragging, setIsNotesDragging] = useState(false);
+  const [, setIsNotesResizing] = useState(false);
   const [viewMode, setViewMode] = useState<'video' | 'image'>('video');
   const [popoutWindow, setPopoutWindow] = useState<Window | null>(null);
   const [isVideoPopedOut, setIsVideoPopedOut] = useState(false);
   const [showComparisonModal, setShowComparisonModal] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showAcceptRejectModal, setShowAcceptRejectModal] = useState(false);
+  const [acceptRejectAction, setAcceptRejectAction] = useState<'accept' | 'reject' | null>(null);
+  const [acceptRejectComment, setAcceptRejectComment] = useState('');
   
   // Screenshot Comparison State
   const [screenshotComparisonState, setScreenshotComparisonState] = useState<ScreenshotComparisonState>({
@@ -629,6 +642,71 @@ export default function InspectionPage() {
     setShowNotes(false);
   };
 
+  // Floating Notes Functions
+  const toggleNotesPin = () => {
+    setIsNotesPinned(!isNotesPinned);
+    if (!isNotesPinned) {
+      setShowNotes(true);
+    }
+  };
+
+  const handleNotesMouseDown = (e: React.MouseEvent) => {
+    // Don't drag if clicking on buttons
+    if ((e.target as HTMLElement).closest('button')) {
+      return;
+    }
+    
+    setIsNotesDragging(true);
+    const startX = e.clientX - notesPosition.x;
+    const startY = e.clientY - notesPosition.y;
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const newX = Math.max(0, Math.min(window.innerWidth - notesSize.width, e.clientX - startX));
+      const newY = Math.max(0, Math.min(window.innerHeight - notesSize.height, e.clientY - startY));
+      setNotesPosition({ x: newX, y: newY });
+    };
+    
+    const handleMouseUp = () => {
+      setIsNotesDragging(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleNotesResizeMouseDown = (e: React.MouseEvent, direction: string) => {
+    e.stopPropagation();
+    setIsNotesResizing(true);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startWidth = notesSize.width;
+    const startHeight = notesSize.height;
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+      
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+      
+      if (direction.includes('right')) newWidth = Math.max(300, Math.min(800, startWidth + deltaX));
+      if (direction.includes('bottom')) newHeight = Math.max(200, Math.min(600, startHeight + deltaY));
+      
+      setNotesSize({ width: newWidth, height: newHeight });
+    };
+    
+    const handleMouseUp = () => {
+      setIsNotesResizing(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   const openVideoPopout = () => {
     const newWindow = window.open('', 'videoPopout', 'width=800,height=600');
     if (newWindow) {
@@ -1118,16 +1196,16 @@ export default function InspectionPage() {
 
   // Expose functions to pop-out window
   useEffect(() => {
-    (window as any).togglePlay = () => {
+    (window as unknown as { togglePlay: () => void; seekVideo: (seconds: number) => void }).togglePlay = () => {
       setIsPlaying(!isPlaying);
     };
-    (window as any).seekVideo = (seconds: number) => {
+    (window as unknown as { togglePlay: () => void; seekVideo: (seconds: number) => void }).seekVideo = (seconds: number) => {
       setVideoTime(Math.max(0, Math.min(151, videoTime + seconds))); // 0-151 seconds (2:31)
     };
     
     return () => {
-      delete (window as any).togglePlay;
-      delete (window as any).seekVideo;
+      delete (window as unknown as { togglePlay?: () => void; seekVideo?: (seconds: number) => void }).togglePlay;
+      delete (window as unknown as { togglePlay?: () => void; seekVideo?: (seconds: number) => void }).seekVideo;
     };
   }, [isPlaying, videoTime]);
 
@@ -1391,14 +1469,25 @@ export default function InspectionPage() {
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Header with Pipe Information - Sticky */}
       <div className="bg-white border-b border-gray-200 px-6 py-3 sticky top-0 z-50 shadow-lg">
-        {/* Row 1: LOGO + Action Buttons */}
+        {/* Row 1: Back Button + LOGO + Action Buttons */}
         <div className="flex items-center justify-between mb-2">
-          {/* LOGO */}
-          <div className="text-lg font-bold text-gray-900">
-            LOGO
+          {/* Left Side: Back Button + LOGO */}
+          <div className="flex items-center gap-4">
+            {/* Back Button */}
+            <button 
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Back to inspections list"
+            >
+              <ChevronLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            
+            {/* LOGO */}
+            <div className="text-lg font-bold text-gray-900">
+              ITpipes
+            </div>
           </div>
           
-          {/* Action Buttons */}
+          {/* Right Side: Action Buttons */}
           <div className="flex items-center gap-2">
             {/* Kebab Menu */}
             <DropdownMenu>
@@ -1430,17 +1519,20 @@ export default function InspectionPage() {
               </DropdownMenuContent>
             </DropdownMenu>
             
-            {/* Send for Review */}
+            {/* Submit for Evaluation - Secondary Action */}
             <button 
-              onClick={submitForReview}
+              onClick={() => setShowSubmitModal(true)}
               className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
             >
-              Send for Review
+              Submit for Evaluation
             </button>
             
-            {/* Save and Exit */}
-            <button className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600">
-              Save and Exit
+            {/* Review Inspection - Primary Action */}
+            <button 
+              onClick={() => setShowAcceptRejectModal(true)}
+              className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors"
+            >
+              Review Inspection
             </button>
           </div>
         </div>
@@ -2457,60 +2549,74 @@ export default function InspectionPage() {
           </div>
 
           {/* Notes Section */}
-          <div className="mt-4">
-            <div className="bg-white border border-gray-200 rounded-lg">
-              <button
-                onClick={() => setShowNotes(!showNotes)}
-                className="w-full px-4 py-3 text-left flex items-center justify-between hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">📝</span>
-                  <span className="font-medium">Notes</span>
-                  {inspectionNotes && (
-                    <span className="text-sm text-gray-500">
-                      ({inspectionNotes.split('\n').length} lines)
-                    </span>
-                  )}
-                </div>
-                {showNotes ? (
-                  <ChevronUp className="w-4 h-4 text-gray-400" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
-              
-              {showNotes && (
-                <div className="px-4 pb-4 border-t border-gray-200">
-                  <textarea
-                    value={inspectionNotes}
-                    onChange={(e) => setInspectionNotes(e.target.value)}
-                    onBlur={saveNotes}
-                    placeholder="Add general notes about this inspection..."
-                    className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-xs text-gray-500">
-                      {inspectionNotes.length}/5000 characters
-                    </span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setInspectionNotes('')}
-                        className="px-3 py-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
-                      >
-                        Clear
-                      </button>
-                      <button
-                        onClick={saveNotes}
-                        className="px-3 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
-                      >
-                        Save
-                      </button>
+          {!isNotesPinned && (
+            <div className="mt-3">
+              <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+                <button
+                  onClick={() => setShowNotes(!showNotes)}
+                  className="w-full px-3 py-2.5 text-left flex items-center justify-between hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📝</span>
+                    <span className="font-medium text-sm">Notes</span>
+                    {inspectionNotes && (
+                      <span className="text-xs text-gray-500">
+                        ({inspectionNotes.split('\n').length} lines)
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleNotesPin();
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="Pin notes as floating window"
+                    >
+                      <Pin className="w-3 h-3 text-gray-400" />
+                    </button>
+                    {showNotes ? (
+                      <ChevronUp className="w-3 h-3 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3 text-gray-400" />
+                    )}
+                  </div>
+                </button>
+                
+                {showNotes && (
+                  <div className="px-3 pb-3 border-t border-gray-200">
+                    <textarea
+                      value={inspectionNotes}
+                      onChange={(e) => setInspectionNotes(e.target.value)}
+                      onBlur={saveNotes}
+                      placeholder="Add general notes about this inspection..."
+                      className="w-full h-28 px-2.5 py-2 border border-gray-300 rounded text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    <div className="flex justify-between items-center mt-1.5">
+                      <span className="text-xs text-gray-500">
+                        {inspectionNotes.length}/5000 characters
+                      </span>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => setInspectionNotes('')}
+                          className="px-2.5 py-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          onClick={saveNotes}
+                          className="px-2.5 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+                        >
+                          Save
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Resizable Separator */}
@@ -3623,8 +3729,214 @@ export default function InspectionPage() {
         </div>
       )}
       
+      {/* Floating Notes Window */}
+      {isNotesPinned && (
+        <div
+          className="fixed bg-white border border-gray-300 rounded-lg shadow-lg z-50 flex flex-col"
+          style={{
+            left: notesPosition.x,
+            top: notesPosition.y,
+            width: notesSize.width,
+            height: notesSize.height
+          }}
+        >
+          {/* Header */}
+          <div 
+            className="flex items-center justify-between p-2 border-b border-gray-200 bg-gray-50 rounded-t-lg flex-shrink-0 cursor-grab hover:bg-gray-100 transition-colors"
+            style={{ cursor: isNotesDragging ? 'grabbing' : 'grab' }}
+            onMouseDown={handleNotesMouseDown}
+          >
+            <div className="flex items-center gap-2">
+              <GripVertical className="w-4 h-4 text-gray-400 drag-handle" />
+              <span className="text-sm font-medium">📝 Notes</span>
+              {inspectionNotes && (
+                <span className="text-xs text-gray-500">
+                  ({inspectionNotes.split('\n').length} lines)
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={toggleNotesPin}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                title="Unpin notes"
+              >
+                <PinOff className="w-3 h-3 text-gray-400" />
+              </button>
+              <button
+                onClick={() => setIsNotesPinned(false)}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                title="Close"
+              >
+                <X className="w-3 h-3 text-gray-400" />
+              </button>
+            </div>
+          </div>
+          
+          {/* Content */}
+          <div className="flex flex-col h-full">
+            <div className="flex-1 p-3">
+              <textarea
+                value={inspectionNotes}
+                onChange={(e) => setInspectionNotes(e.target.value)}
+                onBlur={saveNotes}
+                placeholder="Add general notes about this inspection..."
+                className="w-full h-full px-2.5 py-2 border border-gray-300 rounded text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+            </div>
+            <div className="flex justify-between items-center p-3 pt-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+              <span className="text-xs text-gray-500">
+                {inspectionNotes.length}/5000 characters
+              </span>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => setInspectionNotes('')}
+                  className="px-2.5 py-1 text-xs text-gray-600 hover:text-gray-900 transition-colors"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={saveNotes}
+                  className="px-2.5 py-1 text-xs bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Resize Handles */}
+          <div
+            className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-gray-300 hover:bg-gray-400"
+            onMouseDown={(e) => handleNotesResizeMouseDown(e, 'bottom-right')}
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 h-1 cursor-s-resize"
+            onMouseDown={(e) => handleNotesResizeMouseDown(e, 'bottom')}
+          />
+          <div
+            className="absolute top-0 bottom-0 right-0 w-1 cursor-e-resize"
+            onMouseDown={(e) => handleNotesResizeMouseDown(e, 'right')}
+          />
+        </div>
+      )}
+
       {/* Screenshot Comparison Modal */}
       <ScreenshotComparisonModal />
+
+      {/* Submit for Evaluation Modal */}
+      <Dialog open={showSubmitModal} onOpenChange={setShowSubmitModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Submit for Evaluation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Are you sure you want to submit this inspection for evaluation? 
+              Once submitted, the inspection will be sent to the review team for assessment.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowSubmitModal(false)}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  // Handle submit logic here
+                  showToast('Inspection submitted for evaluation', 'success');
+                  setShowSubmitModal(false);
+                }}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Accept/Reject Inspection Modal */}
+      <Dialog open={showAcceptRejectModal} onOpenChange={setShowAcceptRejectModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Review Inspection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Please review this inspection and provide your decision with comments.
+            </p>
+            
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAcceptRejectAction('accept')}
+                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                    acceptRejectAction === 'accept'
+                      ? 'bg-green-50 border-green-500 text-green-700'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  ✓ Accept
+                </button>
+                <button
+                  onClick={() => setAcceptRejectAction('reject')}
+                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                    acceptRejectAction === 'reject'
+                      ? 'bg-red-50 border-red-500 text-red-700'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  ✗ Reject
+                </button>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Comments
+                </label>
+                <textarea
+                  value={acceptRejectComment}
+                  onChange={(e) => setAcceptRejectComment(e.target.value)}
+                  placeholder="Add your review comments..."
+                  className="w-full h-24 px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAcceptRejectModal(false);
+                  setAcceptRejectAction(null);
+                  setAcceptRejectComment('');
+                }}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (acceptRejectAction) {
+                    const action = acceptRejectAction === 'accept' ? 'accepted' : 'rejected';
+                    showToast(`Inspection ${action} successfully`, 'success');
+                    setShowAcceptRejectModal(false);
+                    setAcceptRejectAction(null);
+                    setAcceptRejectComment('');
+                  }
+                }}
+                disabled={!acceptRejectAction}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {acceptRejectAction === 'accept' ? 'Accept' : acceptRejectAction === 'reject' ? 'Reject' : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
