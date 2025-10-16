@@ -81,3 +81,32 @@ export interface ComparisonState {
   previousVideoPlaying: boolean;
 }
 
+// New types for Screenshot Comparison
+export interface Screenshot {
+  id: number;
+  observationId: number;
+  timestamp: string;
+  imageUrl: string;
+  thumbnailUrl?: string;
+  metadata?: {
+    width: number;
+    height: number;
+    size: number;
+    format: string;
+  };
+}
+
+export type ScreenshotComparisonLayout = 'vertical' | 'horizontal' | 'slider' | 'overlay';
+
+export interface ScreenshotComparisonState {
+  isActive: boolean;
+  layout: ScreenshotComparisonLayout;
+  selectedScreenshots: {
+    current: Screenshot | null;
+    previous: Screenshot | null;
+  };
+  zoomLevel: number;
+  panPosition: { x: number; y: number };
+  synchronizedPan: boolean;
+}
+

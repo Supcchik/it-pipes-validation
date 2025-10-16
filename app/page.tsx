@@ -21,15 +21,19 @@ import {
   ChevronDown,
   Minimize,
   Maximize2,
-  Link
+  Link,
+  MoreVertical,
+  Edit,
+  ExternalLink
 } from 'lucide-react';
-import type { Observation, QuickCode, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, Inspection, ComparisonLayout, ComparisonState } from '@/types/inspection';
+import type { Observation, QuickCode, EditingCell, ContextMenuState, ToastState, PipeSegmentInfo, Inspection, ComparisonLayout, ComparisonState, Screenshot, ScreenshotComparisonState, ScreenshotComparisonLayout } from '@/types/inspection';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function InspectionPage() {
   const [selectedObservation, setSelectedObservation] = useState<number | null>(null);
@@ -44,7 +48,7 @@ export default function InspectionPage() {
     currentVideoPlaying: false,
     previousVideoPlaying: false
   });
-  const [sliderPosition, setSliderPosition] = useState(50); // 0-100%
+  // sliderPosition moved to Screenshot Comparison section
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [showQuickCodeDialog, setShowQuickCodeDialog] = useState(false);
@@ -60,6 +64,7 @@ export default function InspectionPage() {
   // Resizable columns state
   const [leftColumnWidth, setLeftColumnWidth] = useState(50); // percentage
   const [isResizing, setIsResizing] = useState(false);
+  const [previousColumnWidth, setPreviousColumnWidth] = useState(50); // for pop-out restoration
 
   // Handle column resizing
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -111,6 +116,23 @@ export default function InspectionPage() {
   const [isVideoPopedOut, setIsVideoPopedOut] = useState(false);
   const [showComparisonModal, setShowComparisonModal] = useState(false);
   
+  // Screenshot Comparison State
+  const [screenshotComparisonState, setScreenshotComparisonState] = useState<ScreenshotComparisonState>({
+    isActive: false,
+    layout: 'horizontal',
+    selectedScreenshots: {
+      current: null,
+      previous: null
+    },
+    zoomLevel: 100,
+    panPosition: { x: 0, y: 0 },
+    synchronizedPan: true
+  });
+  
+  // Additional state for special layouts
+  const [sliderPosition, setSliderPosition] = useState(50);
+  const [overlayOpacity, setOverlayOpacity] = useState(50);
+  
   // Mock data for previous inspection comparison
   const [comparisonPreviousInspection] = useState<Inspection>({
     id: 2,
@@ -152,6 +174,50 @@ export default function InspectionPage() {
       },
     ]
   });
+
+  // Mock data for screenshots
+  const mockScreenshots: Screenshot[] = [
+    {
+      id: 1,
+      observationId: 1,
+      timestamp: "2024-01-15T10:30:00Z",
+      imageUrl: "https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=800&h=600&fit=crop",
+      thumbnailUrl: "https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=200&h=150&fit=crop",
+      metadata: { width: 800, height: 600, size: 245760, format: "JPEG" }
+    },
+    {
+      id: 2,
+      observationId: 2,
+      timestamp: "2024-01-15T10:35:00Z",
+      imageUrl: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800&h=600&fit=crop",
+      thumbnailUrl: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=200&h=150&fit=crop",
+      metadata: { width: 800, height: 600, size: 198432, format: "JPEG" }
+    },
+    {
+      id: 3,
+      observationId: 3,
+      timestamp: "2024-01-15T10:40:00Z",
+      imageUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=600&fit=crop",
+      thumbnailUrl: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200&h=150&fit=crop",
+      metadata: { width: 800, height: 600, size: 312456, format: "JPEG" }
+    },
+    {
+      id: 4,
+      observationId: 4,
+      timestamp: "2024-01-15T10:45:00Z",
+      imageUrl: "https://images.unsplash.com/photo-1564760055775-d63b17a55c44?w=800&h=600&fit=crop",
+      thumbnailUrl: "https://images.unsplash.com/photo-1564760055775-d63b17a55c44?w=200&h=150&fit=crop",
+      metadata: { width: 800, height: 600, size: 267890, format: "JPEG" }
+    },
+    {
+      id: 5,
+      observationId: 5,
+      timestamp: "2024-01-15T10:50:00Z",
+      imageUrl: "https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=800&h=600&fit=crop",
+      thumbnailUrl: "https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=200&h=150&fit=crop",
+      metadata: { width: 800, height: 600, size: 223456, format: "JPEG" }
+    }
+  ];
   
   const [pipeInfo, setPipeInfo] = useState<PipeSegmentInfo>({
     reference: 'GM-MH-E23_MH-E22',
@@ -416,11 +482,56 @@ export default function InspectionPage() {
         setIsFullscreen(!isFullscreen);
         showToast(isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen', 'info');
       }
+      
+      // Screenshot Comparison shortcuts
+      if (screenshotComparisonState.isActive) {
+        switch (e.key) {
+          case '1':
+            setScreenshotComparisonState(prev => ({ ...prev, layout: 'horizontal' }));
+            showToast('Layout: Horizontal', 'info');
+            break;
+          case '2':
+            setScreenshotComparisonState(prev => ({ ...prev, layout: 'vertical' }));
+            showToast('Layout: Vertical', 'info');
+            break;
+          case '3':
+            setScreenshotComparisonState(prev => ({ ...prev, layout: 'slider' }));
+            showToast('Layout: Slider', 'info');
+            break;
+          case '4':
+            setScreenshotComparisonState(prev => ({ ...prev, layout: 'overlay' }));
+            showToast('Layout: Overlay', 'info');
+            break;
+          case '=':
+          case '+':
+            setScreenshotComparisonState(prev => ({ 
+              ...prev, 
+              zoomLevel: Math.min(400, prev.zoomLevel + 25) 
+            }));
+            showToast(`Zoom: ${screenshotComparisonState.zoomLevel + 25}%`, 'info');
+            break;
+          case '-':
+            setScreenshotComparisonState(prev => ({ 
+              ...prev, 
+              zoomLevel: Math.max(25, prev.zoomLevel - 25) 
+            }));
+            showToast(`Zoom: ${screenshotComparisonState.zoomLevel - 25}%`, 'info');
+            break;
+          case '0':
+            setScreenshotComparisonState(prev => ({ 
+              ...prev, 
+              zoomLevel: 100,
+              panPosition: { x: 0, y: 0 }
+            }));
+            showToast('Reset zoom and pan', 'info');
+            break;
+        }
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedObservation, editingCell, isPlaying, contextMenu, videoTime, observations, isFullscreen]);
+  }, [selectedObservation, editingCell, isPlaying, contextMenu, videoTime, observations, isFullscreen, screenshotComparisonState]);
 
   useEffect(() => {
     const handleClick = () => setContextMenu(null);
@@ -521,6 +632,10 @@ export default function InspectionPage() {
   const openVideoPopout = () => {
     const newWindow = window.open('', 'videoPopout', 'width=800,height=600');
     if (newWindow) {
+      // Save current column width and minimize video column
+      setPreviousColumnWidth(leftColumnWidth);
+      setLeftColumnWidth(20); // Minimize to 20% (minimum allowed)
+      
       newWindow.document.write(`
         <!DOCTYPE html>
         <html>
@@ -567,16 +682,60 @@ export default function InspectionPage() {
       popoutWindow.close();
       setPopoutWindow(null);
       setIsVideoPopedOut(false);
+      // Restore previous column width
+      setLeftColumnWidth(previousColumnWidth);
       showToast('Video returned to main window', 'info');
     }
   };
 
   const openComparisonModal = () => {
-    if (selectedObservation && comparisonState.isActive) {
+    if (selectedObservation) {
       setShowComparisonModal(true);
     } else {
-      showToast('Please select an observation and enable comparison mode first', 'warning');
+      showToast('Please select an observation first', 'warning');
     }
+  };
+
+  // Screenshot Comparison Functions
+  const toggleScreenshotComparisonMode = () => {
+    setScreenshotComparisonState(prev => ({
+      ...prev,
+      isActive: !prev.isActive,
+      selectedScreenshots: {
+        current: !prev.isActive ? getCurrentScreenshot() : null,
+        previous: !prev.isActive ? getPreviousScreenshot() : null
+      }
+    }));
+    showToast(
+      screenshotComparisonState.isActive 
+        ? 'Screenshot comparison disabled' 
+        : 'Screenshot comparison enabled', 
+      'info'
+    );
+  };
+
+  const getCurrentScreenshot = (): Screenshot | null => {
+    if (!selectedObservation) return null;
+    return mockScreenshots.find(s => s.observationId === selectedObservation) || null;
+  };
+
+  const getPreviousScreenshot = (): Screenshot | null => {
+    if (!selectedObservation) return null;
+    // For prototype, return a different screenshot from mock data
+    const currentScreenshot = getCurrentScreenshot();
+    if (!currentScreenshot) return null;
+    return mockScreenshots.find(s => s.id !== currentScreenshot.id) || null;
+  };
+
+  const selectScreenshotForComparison = (screenshot: Screenshot, type: 'current' | 'previous') => {
+    setScreenshotComparisonState(prev => ({
+      ...prev,
+      selectedScreenshots: {
+        ...prev.selectedScreenshots,
+        [type]: screenshot
+      }
+    }));
+    showToast(`Selected ${type} screenshot`, 'info');
   };
 
   // Comparison Video Player Component
@@ -647,8 +806,6 @@ export default function InspectionPage() {
 
   // Screenshot Comparison Modal Component
   const ScreenshotComparisonModal = () => {
-    const [sliderPosition, setSliderPosition] = useState(50);
-    
     if (!showComparisonModal) return null;
     
     return (
@@ -744,12 +901,6 @@ export default function InspectionPage() {
               <span>Inspection ({currentInspection.date})</span>
             </h3>
             <div className="flex items-center gap-2">
-              <button 
-                onClick={openComparisonModal}
-                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
-              >
-                📸⚡ Compare Screenshots
-              </button>
               <button 
                 onClick={addNewObservation}
                 className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm font-medium flex items-center gap-2"
@@ -1249,26 +1400,35 @@ export default function InspectionPage() {
           
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
-            {/* Delete */}
-            <button 
-              onClick={deleteInspection}
-              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-              title="Delete Inspection"
-            >
-              <Trash2 className="w-4 h-4 text-red-600" />
-            </button>
-            
-            {/* Separator */}
-            <div className="h-6 w-px bg-gray-300"></div>
-            
-            {/* Share (Copy Link) */}
-            <button 
-              onClick={copyInspectionLink}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Copy Inspection Link"
-            >
-              <Link className="w-4 h-4 text-gray-600" />
-            </button>
+            {/* Kebab Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button 
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="More actions"
+                >
+                  <MoreVertical className="w-4 h-4 text-gray-600" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={copyInspectionLink} className="flex items-center gap-2">
+                  <Link className="w-4 h-4" />
+                  Copy inspection link
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportReport} className="flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Export report
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={deleteInspection} 
+                  className="flex items-center gap-2 text-red-600 focus:text-red-600"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete inspection
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             
             {/* Send for Review */}
             <button 
@@ -1277,24 +1437,6 @@ export default function InspectionPage() {
             >
               Send for Review
             </button>
-            
-            {/* Export/Upload Buttons */}
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={exportReport}
-                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Export Report</span>
-              </button>
-              <button 
-                onClick={uploadVideo}
-                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
-              >
-                <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">Upload Video</span>
-              </button>
-            </div>
             
             {/* Save and Exit */}
             <button className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600">
@@ -1305,7 +1447,7 @@ export default function InspectionPage() {
         
         {/* Row 2: Inspection Details + Edit */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-8 flex-1">
             {/* Pipe Information */}
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-500">Pipe Segment:</span>
@@ -1327,13 +1469,16 @@ export default function InspectionPage() {
               <span className="text-sm font-medium text-gray-500">Downstream:</span>
               <span className="text-sm text-gray-900">{pipeInfo.downstreamManhole}</span>
             </div>
-            
           </div>
           
-          {/* Edit Button */}
-          <Button variant="outline" size="sm" onClick={() => setShowEditSidebar(true)}>
-            Edit
-          </Button>
+          {/* Edit Button - Icon only */}
+          <button 
+            onClick={() => setShowEditSidebar(true)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors ml-4"
+            title="Edit inspection"
+          >
+            <Edit className="w-4 h-4 text-gray-600" />
+          </button>
         </div>
       </div>
 
@@ -1342,8 +1487,360 @@ export default function InspectionPage() {
           className="border-r border-gray-200 bg-white p-6 flex flex-col min-h-0 flex-shrink-0"
           style={{ width: `${leftColumnWidth}%` }}
         >
-          {/* Video Comparison Layout */}
-          {comparisonState.isActive && comparisonState.selectedInspection ? (
+          {/* Screenshot Comparison Layout */}
+          {screenshotComparisonState.isActive ? (
+            <div className="flex flex-col h-full">
+              {/* Screenshot Comparison Controls */}
+              <div className="p-4 border-b border-gray-200">
+                {/* Row 1: Screenshot Selection + Exit + Sync */}
+                <div className="flex items-center justify-between mb-3">
+                  {/* Left: Screenshot Selection + Exit */}
+                  <div className="flex items-center gap-3">
+                    <Select 
+                      value={screenshotComparisonState.selectedScreenshots.current?.id.toString() || ""} 
+                      onValueChange={(value) => {
+                        const screenshot = mockScreenshots.find(s => s.id.toString() === value);
+                        if (screenshot) {
+                          selectScreenshotForComparison(screenshot, 'current');
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-48 h-8 bg-white/80 rounded-full shadow-sm border-0">
+                        <SelectValue placeholder="Select current screenshot" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mockScreenshots.map((screenshot) => (
+                          <SelectItem key={screenshot.id} value={screenshot.id.toString()}>
+                            📸 Screenshot #{screenshot.id} - {screenshot.timestamp.split('T')[0]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    <button
+                      onClick={toggleScreenshotComparisonMode}
+                      className="h-8 rounded-full bg-orange-500 text-white hover:bg-orange-600 flex items-center gap-2 px-3 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                      <span className="text-xs font-medium">Exit Compare</span>
+                    </button>
+                    
+                    <Select 
+                      value={screenshotComparisonState.selectedScreenshots.previous?.id.toString() || ""} 
+                      onValueChange={(value) => {
+                        const screenshot = mockScreenshots.find(s => s.id.toString() === value);
+                        if (screenshot) {
+                          selectScreenshotForComparison(screenshot, 'previous');
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-48 h-8 bg-white/80 rounded-full shadow-sm border-0">
+                        <SelectValue placeholder="Select previous screenshot" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mockScreenshots.map((screenshot) => (
+                          <SelectItem key={screenshot.id} value={screenshot.id.toString()}>
+                            📸 Screenshot #{screenshot.id} - {screenshot.timestamp.split('T')[0]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {/* Right: Reset View Control */}
+                  <button
+                    onClick={() => setScreenshotComparisonState(prev => ({ 
+                      ...prev, 
+                      zoomLevel: 100,
+                      panPosition: { x: 0, y: 0 }
+                    }))}
+                    className="h-8 rounded-full bg-white/80 text-gray-700 hover:bg-gray-100 flex items-center gap-2 px-3 transition-colors"
+                  >
+                    <span className="text-xs">🔄</span>
+                    <span className="text-xs font-medium">Reset View</span>
+                  </button>
+                </div>
+                
+                {/* Row 2: Layout + Zoom */}
+                <div className="flex items-center justify-between">
+                  {/* Left: Layout Options */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-700">Layout:</span>
+                    <button
+                      onClick={() => setScreenshotComparisonState(prev => ({ ...prev, layout: 'horizontal' }))}
+                      className={`h-8 rounded-full flex items-center gap-2 px-3 transition-colors ${
+                        screenshotComparisonState.layout === 'horizontal' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-white/80 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="text-xs">↔️</span>
+                      <span className="text-xs font-medium">Horizontal</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => setScreenshotComparisonState(prev => ({ ...prev, layout: 'vertical' }))}
+                      className={`h-8 rounded-full flex items-center gap-2 px-3 transition-colors ${
+                        screenshotComparisonState.layout === 'vertical' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-white/80 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="text-xs">↕️</span>
+                      <span className="text-xs font-medium">Vertical</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => setScreenshotComparisonState(prev => ({ ...prev, layout: 'slider' }))}
+                      className={`h-8 rounded-full flex items-center gap-2 px-3 transition-colors ${
+                        screenshotComparisonState.layout === 'slider' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-white/80 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="text-xs">🎚️</span>
+                      <span className="text-xs font-medium">Slider</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => setScreenshotComparisonState(prev => ({ ...prev, layout: 'overlay' }))}
+                      className={`h-8 rounded-full flex items-center gap-2 px-3 transition-colors ${
+                        screenshotComparisonState.layout === 'overlay' 
+                          ? 'bg-blue-500 text-white' 
+                          : 'bg-white/80 text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="text-xs">🔄</span>
+                      <span className="text-xs font-medium">Overlay</span>
+                    </button>
+                  </div>
+                  
+                  {/* Right: Zoom Controls */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-700">Zoom:</span>
+                    <div className="flex items-center gap-1 bg-white/80 rounded-full px-2 py-1 shadow-sm">
+                      <button
+                        onClick={() => setScreenshotComparisonState(prev => ({ 
+                          ...prev, 
+                          zoomLevel: Math.max(25, prev.zoomLevel - 25) 
+                        }))}
+                        className="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded"
+                      >
+                        <span className="text-xs">-</span>
+                      </button>
+                      <span className="text-xs font-mono w-8 text-center">
+                        {screenshotComparisonState.zoomLevel}%
+                      </span>
+                      <button
+                        onClick={() => setScreenshotComparisonState(prev => ({ 
+                          ...prev, 
+                          zoomLevel: Math.min(400, prev.zoomLevel + 25) 
+                        }))}
+                        className="w-6 h-6 flex items-center justify-center hover:bg-gray-100 rounded"
+                      >
+                        <span className="text-xs">+</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+
+              {/* Screenshot Comparison Viewer */}
+              <div className="flex-1 p-4">
+                {screenshotComparisonState.layout === 'slider' ? (
+                  /* Slider Layout */
+                  <div className="relative bg-gray-100 rounded-lg overflow-hidden h-full" style={{ aspectRatio: '16/9' }}>
+                    {/* Previous Screenshot (Background) */}
+                    <div className="absolute inset-0">
+                      {screenshotComparisonState.selectedScreenshots.previous ? (
+                        <img
+                          src={screenshotComparisonState.selectedScreenshots.previous.imageUrl}
+                          alt="Previous"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-r from-gray-100 to-gray-200 flex items-center justify-center">
+                          <div className="text-center text-gray-600">
+                            <div className="text-4xl mb-2">📸</div>
+                            <div>Previous Screenshot</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Current Screenshot (Clipped) */}
+                    <div 
+                      className="absolute inset-0"
+                      style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
+                    >
+                      {screenshotComparisonState.selectedScreenshots.current ? (
+                        <img
+                          src={screenshotComparisonState.selectedScreenshots.current.imageUrl}
+                          alt="Current"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-r from-blue-100 to-blue-200 flex items-center justify-center">
+                          <div className="text-center text-blue-800">
+                            <div className="text-4xl mb-2">📸</div>
+                            <div>Current Screenshot</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Slider Handle */}
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div 
+                        className="absolute top-0 bottom-0 w-1 bg-white shadow-lg cursor-ew-resize"
+                        style={{ left: `${sliderPosition}%` }}
+                        onMouseDown={(e) => {
+                          const handleMouseMove = (e: MouseEvent) => {
+                            const target = e.currentTarget as HTMLElement;
+                            const rect = target?.getBoundingClientRect();
+                            if (rect) {
+                              const percentage = ((e.clientX - rect.left) / rect.width) * 100;
+                              setSliderPosition(Math.max(0, Math.min(100, percentage)));
+                            }
+                          };
+                          document.addEventListener('mousemove', handleMouseMove);
+                          document.addEventListener('mouseup', () => {
+                            document.removeEventListener('mousemove', handleMouseMove);
+                          });
+                        }}
+                      />
+                    </div>
+                    
+                    {/* Slider Control */}
+                    <div className="absolute bottom-4 left-4 right-4">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={sliderPosition}
+                        onChange={(e) => setSliderPosition(Number(e.target.value))}
+                        className="w-full h-2 bg-white rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="text-center text-white text-sm mt-1">
+                        Position: {sliderPosition}%
+                      </div>
+                    </div>
+                  </div>
+                ) : screenshotComparisonState.layout === 'overlay' ? (
+                  /* Overlay Layout */
+                  <div className="relative bg-gray-100 rounded-lg overflow-hidden h-full" style={{ aspectRatio: '16/9' }}>
+                    {/* Previous Screenshot (Background) */}
+                    <div className="absolute inset-0">
+                      {screenshotComparisonState.selectedScreenshots.previous ? (
+                        <img
+                          src={screenshotComparisonState.selectedScreenshots.previous.imageUrl}
+                          alt="Previous"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-r from-gray-100 to-gray-200 flex items-center justify-center">
+                          <div className="text-center text-gray-600">
+                            <div className="text-4xl mb-2">📸</div>
+                            <div>Previous Screenshot</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Current Screenshot (Overlay) */}
+                    <div 
+                      className="absolute inset-0"
+                      style={{ opacity: overlayOpacity / 100 }}
+                    >
+                      {screenshotComparisonState.selectedScreenshots.current ? (
+                        <img
+                          src={screenshotComparisonState.selectedScreenshots.current.imageUrl}
+                          alt="Current"
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-r from-orange-100 to-orange-200 flex items-center justify-center">
+                          <div className="text-center text-orange-800">
+                            <div className="text-4xl mb-2">📸</div>
+                            <div>Current Screenshot</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Opacity Control */}
+                    <div className="absolute bottom-4 left-4 right-4">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={overlayOpacity}
+                        onChange={(e) => setOverlayOpacity(Number(e.target.value))}
+                        className="w-full h-2 bg-white rounded-lg appearance-none cursor-pointer"
+                      />
+                      <div className="text-center text-white text-sm mt-1">
+                        Overlay: {overlayOpacity}%
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Standard Grid Layout (Horizontal/Vertical) */
+                  <div className={`${screenshotComparisonState.layout === 'vertical' ? 'grid grid-rows-2' : 'grid grid-cols-2'} gap-4 h-full`}>
+                  {/* Current Screenshot */}
+                  <div className="relative bg-gray-100 rounded-lg overflow-hidden">
+                    <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
+                      Current
+                    </div>
+                    {screenshotComparisonState.selectedScreenshots.current ? (
+                      <img
+                        src={screenshotComparisonState.selectedScreenshots.current.imageUrl}
+                        alt="Current screenshot"
+                        className="w-full h-full object-contain"
+                        style={{
+                          transform: `scale(${screenshotComparisonState.zoomLevel / 100}) translate(${screenshotComparisonState.panPosition.x}px, ${screenshotComparisonState.panPosition.y}px)`,
+                          transformOrigin: 'top left'
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <div className="text-center">
+                          <div className="text-4xl mb-2">📸</div>
+                          <div>No current screenshot</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Previous Screenshot */}
+                  <div className="relative bg-gray-100 rounded-lg overflow-hidden">
+                    <div className="absolute top-2 left-2 bg-gray-500 text-white px-2 py-1 rounded text-xs font-medium">
+                      Previous
+                    </div>
+                    {screenshotComparisonState.selectedScreenshots.previous ? (
+                      <img
+                        src={screenshotComparisonState.selectedScreenshots.previous.imageUrl}
+                        alt="Previous screenshot"
+                        className="w-full h-full object-contain opacity-80"
+                        style={{
+                          transform: `scale(${screenshotComparisonState.zoomLevel / 100}) translate(${screenshotComparisonState.panPosition.x}px, ${screenshotComparisonState.panPosition.y}px)`,
+                          transformOrigin: 'top left'
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        <div className="text-center">
+                          <div className="text-4xl mb-2">📸</div>
+                          <div>No previous screenshot</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                )}
+              </div>
+            </div>
+          ) : comparisonState.isActive && comparisonState.selectedInspection ? (
             <div className="flex flex-col gap-4">
               {/* Layout Controls with Version Chips */}
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 border border-gray-200 bg-white p-3 rounded-lg">
@@ -1354,18 +1851,22 @@ export default function InspectionPage() {
                     <span className="text-xs font-medium text-gray-800">{currentInspection.date}</span>
                   </div>
                   
-                  {/* Compare Button */}
-                  <button 
-                    onClick={toggleComparisonMode}
-                    className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-colors flex-shrink-0 ${
-                      comparisonState.isActive 
-                        ? 'bg-orange-500 text-white hover:bg-orange-600' 
-                        : 'bg-blue-500 text-white hover:bg-blue-600'
-                    }`}
-                  >
-                    <Eye className="w-3 h-3" />
-                    <span>{comparisonState.isActive ? 'Exit Compare' : 'Compare'}</span>
-                  </button>
+                  {/* Compare Buttons */}
+                  <div className="flex items-center gap-2">
+                    {/* Video Compare Button */}
+                    <button 
+                      onClick={toggleComparisonMode}
+                      className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-colors flex-shrink-0 ${
+                        comparisonState.isActive 
+                          ? 'bg-orange-500 text-white hover:bg-orange-600' 
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
+                      }`}
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>{comparisonState.isActive ? 'Exit Compare' : 'Compare'}</span>
+                    </button>
+                    
+                  </div>
                   
                   {/* Version 2 (Selected) */}
                   <div className="flex items-center gap-2 bg-white/80 rounded-full px-3 py-1.5 shadow-sm flex-shrink-0">
@@ -1623,7 +2124,7 @@ export default function InspectionPage() {
                 </div>
               </div>
 
-              {/* Video Container with 16:9 aspect ratio */}
+              {/* Video/Image Container with 16:9 aspect ratio */}
               {isVideoPopedOut ? (
                 <div className="relative bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
                   <div className="text-center text-white">
@@ -1642,6 +2143,57 @@ export default function InspectionPage() {
                       Return Video to Main Window
                     </button>
                   </div>
+                </div>
+              ) : viewMode === 'image' ? (
+                <div className="relative bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center" style={{ aspectRatio: '16/9' }}>
+                  {selectedObservation ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="text-6xl mb-4">📸</div>
+                        <div className="text-lg font-semibold text-gray-900 mb-2">Observation #{selectedObservation}</div>
+                        <div className="text-sm text-gray-600">
+                          Distance: {observations.find(obs => obs.id === selectedObservation)?.distance || 'N/A'}m
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Grade: {observations.find(obs => obs.id === selectedObservation)?.grade || 'N/A'}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Code: {observations.find(obs => obs.id === selectedObservation)?.code || 'N/A'}
+                        </div>
+                        <div className="mt-4 flex items-center gap-3">
+                          <div className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm">
+                            📸 Screenshot Preview
+                          </div>
+                          <button 
+                            onClick={toggleScreenshotComparisonMode}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              screenshotComparisonState.isActive 
+                                ? 'bg-purple-500 text-white hover:bg-purple-600' 
+                                : 'bg-gray-500 text-white hover:bg-gray-600'
+                            }`}
+                          >
+                            📸 {screenshotComparisonState.isActive ? 'Exit Screenshot Compare' : 'Screenshot Compare'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center text-gray-600">
+                      <div className="text-6xl mb-4">🖼️</div>
+                      <div className="text-lg font-semibold mb-2">Select an observation to view image</div>
+                      <div className="text-sm mb-4">Click on any observation in the table below</div>
+                      <button 
+                        onClick={toggleScreenshotComparisonMode}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          screenshotComparisonState.isActive 
+                            ? 'bg-purple-500 text-white hover:bg-purple-600' 
+                            : 'bg-gray-500 text-white hover:bg-gray-600'
+                        }`}
+                      >
+                        📸 {screenshotComparisonState.isActive ? 'Exit Screenshot Compare' : 'Screenshot Compare'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
               <div className="relative bg-gray-900 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
@@ -1702,7 +2254,7 @@ export default function InspectionPage() {
                       className="w-8 h-8 text-white/80 hover:text-white"
                       title={isVideoPopedOut ? "Return video to main window" : "Open video in separate window"}
                     >
-                      {isVideoPopedOut ? <Minimize className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                      {isVideoPopedOut ? <Minimize className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
@@ -1735,6 +2287,20 @@ export default function InspectionPage() {
                             📅 {inspection.date}
                           </SelectItem>
                         ))}
+                        <SelectSeparator />
+                        <SelectItem 
+                          value="upload-new" 
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            uploadVideo();
+                          }}
+                          className="text-blue-600 focus:text-blue-600"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Upload className="w-4 h-4" />
+                            Upload new video
+                          </div>
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1962,38 +2528,19 @@ export default function InspectionPage() {
           <div className="flex-1 overflow-auto px-6 py-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Observations</h3>
-              <button 
-                onClick={addNewObservation}
-                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm font-medium flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Add Observation
-              </button>
+              {!comparisonState.isActive && (
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={addNewObservation}
+                    className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 text-sm font-medium flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Observation
+                  </button>
+                </div>
+              )}
             </div>
 
-            {comparisonState.isActive && comparisonState.selectedInspection && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="text-sm font-semibold text-blue-900 mb-2">Comparison Legend:</div>
-                <div className="flex items-center gap-4 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-green-100 border border-green-300"></div>
-                    <span>+New</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-red-100 border border-red-300"></div>
-                    <span>-Removed</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-orange-100 border border-orange-300"></div>
-                    <span>Modified</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 bg-white border border-gray-300"></div>
-                    <span>Same</span>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {comparisonState.isActive ? (
               <ComparisonTables />
