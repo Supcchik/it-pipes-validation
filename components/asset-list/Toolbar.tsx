@@ -16,7 +16,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
-  Search,
   Settings,
   MoreVertical,
   ExternalLink,
@@ -30,10 +29,13 @@ import {
   Filter,
   Columns
 } from 'lucide-react';
-import type { FilterConfig } from '@/lib/types/asset-list';
+import type { FilterConfig, Asset } from '@/lib/types/asset-list';
+import SearchBar from './SearchBar';
 
 interface ToolbarProps {
-  onSearch: () => void;
+  assets: Asset[]; // НОВИЙ: для SearchBar
+  onFilteredResults: (assets: Asset[]) => void; // НОВИЙ: результат simple search
+  onOpenAdvancedSearch: () => void; // НОВИЙ: відкрити advanced search modal
   onOpenViewSettings: () => void; // Залишено для backward compatibility
   onOpenFilters?: () => void; // НОВИЙ: Відкрити ViewSettings на вкладці Filters
   onOpenColumns?: () => void; // НОВИЙ: Відкрити ViewSettings на вкладці Columns
@@ -51,7 +53,9 @@ interface ToolbarProps {
 }
 
 export default function Toolbar({
-  onSearch,
+  assets,
+  onFilteredResults,
+  onOpenAdvancedSearch,
   onOpenViewSettings,
   onOpenFilters,
   onOpenColumns,
@@ -72,25 +76,13 @@ export default function Toolbar({
       <div className="min-h-14 bg-white border-b border-neutral-200 flex flex-col">
         {/* Top Row: Primary Actions */}
         <div className="h-14 flex items-center justify-between px-4 gap-2">
-          {/* Group 1: Search */}
+          {/* Group 1: Search Bar */}
           <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onSearch}
-                  className="h-10 w-10"
-                  aria-label="Search"
-                >
-                  <Search className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Search assets</p>
-                <p className="text-xs text-neutral-500">Ctrl+K</p>
-              </TooltipContent>
-            </Tooltip>
+            <SearchBar
+              assets={assets}
+              onFilteredResults={onFilteredResults}
+              onOpenAdvancedSearch={onOpenAdvancedSearch}
+            />
           </div>
 
           {/* Visual Separator */}
@@ -99,51 +91,37 @@ export default function Toolbar({
           {/* Group 2: Filter + Columns */}
           <div className="flex items-center gap-2">
             {onOpenFilters ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
-                    onClick={onOpenFilters}
-                    aria-label="Filter"
-                  >
-                    <Filter className="w-4 h-4" />
-                    <span className="text-sm font-medium">Filter</span>
-                    {activeFiltersCount > 0 && (
-                      <Badge className="ml-1 bg-orange-500 text-white text-xs h-5 px-1.5">
-                        {activeFiltersCount}
-                      </Badge>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Add or edit filters</p>
-                </TooltipContent>
-              </Tooltip>
+              <Button
+                variant="ghost"
+                className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
+                onClick={onOpenFilters}
+                aria-label="Filter"
+              >
+                <Filter className="w-4 h-4" />
+                <span className="text-sm">Filter</span>
+                {activeFiltersCount > 0 && (
+                  <Badge className="ml-1 bg-orange-500 text-white text-xs h-5 px-1.5">
+                    {activeFiltersCount}
+                  </Badge>
+                )}
+              </Button>
             ) : null}
 
             {onOpenColumns ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
-                    onClick={onOpenColumns}
-                    aria-label="Columns"
-                  >
-                    <Columns className="w-4 h-4" />
-                    <span className="text-sm font-medium">Columns</span>
-                    {visibleColumnsCount !== undefined && (
-                      <span className="text-xs text-neutral-500 ml-1">
-                        ({visibleColumnsCount})
-                      </span>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Customize columns</p>
-                </TooltipContent>
-              </Tooltip>
+              <Button
+                variant="ghost"
+                className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
+                onClick={onOpenColumns}
+                aria-label="Columns"
+              >
+                <Columns className="w-4 h-4" />
+                <span className="text-sm">Columns</span>
+                {visibleColumnsCount !== undefined && (
+                  <span className="text-xs text-neutral-500 ml-1">
+                    ({visibleColumnsCount})
+                  </span>
+                )}
+              </Button>
             ) : null}
 
             {/* Fallback: Settings button if new props not provided */}
@@ -213,24 +191,17 @@ export default function Toolbar({
 
           {/* Group 3: Report + More */}
           <div className="flex items-center gap-2">
-            {/* REPORT BUTTON - PROMOTED */}
+            {/* REPORT BUTTON - Equal visual weight with Filter/Columns */}
             {onGenerateReport && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="gap-2 px-3 h-9 text-orange-600 hover:bg-orange-50 font-medium"
-                    onClick={onGenerateReport}
-                    aria-label="Generate PDF report"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span className="text-sm">Report</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Generate report</p>
-                </TooltipContent>
-              </Tooltip>
+              <Button
+                variant="ghost"
+                className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
+                onClick={onGenerateReport}
+                aria-label="Generate PDF report"
+              >
+                <Printer className="w-4 h-4" />
+                <span className="text-sm">Report</span>
+              </Button>
             )}
 
             {/* More Tools Dropdown */}

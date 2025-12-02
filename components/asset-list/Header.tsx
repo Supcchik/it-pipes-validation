@@ -23,7 +23,7 @@ export default function Header({ projectName, onProjectChange }: HeaderProps) {
       <div className="flex items-center justify-between h-full px-6">
         {/* Left: Logo */}
         <div className="flex items-center">
-          <CoreVisionLogo height={32} />
+          <CoreVisionLogo width={124} />
         </div>
 
         {/* Center-Right: Project Selector */}

@@ -43,6 +43,7 @@ export default function AssetListPage() {
       return [];
     }
   });
+  const [simpleSearchResults, setSimpleSearchResults] = useState<Asset[] | null>(null); // НОВИЙ: null = no search, [] = no results, [assets] = results
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState<SearchQuery | null>(null);
@@ -90,15 +91,20 @@ export default function AssetListPage() {
     return views[0];
   }, [views, activeViewId]);
 
-  // Filter assets based on active view filters and search query
+  // Filter assets based on simple search, active view filters and advanced search query
   const filteredAssets = useMemo(() => {
-    if (!assets || assets.length === 0) {
+    // Start with simple search results (or all assets if no simple search active)
+    // simpleSearchResults === null means no search active, use all assets
+    // simpleSearchResults === [] means search active but no results found
+    // simpleSearchResults === [assets] means search active with results
+    let filtered = simpleSearchResults === null ? [...assets] : [...simpleSearchResults];
+    
+    if (!filtered || filtered.length === 0) {
       return [];
     }
     if (!activeView) {
-      return assets;
+      return filtered;
     }
-    let filtered = [...assets];
 
     // Apply view filters
     if (activeView.filters && activeView.filters.length > 0) {
@@ -234,7 +240,7 @@ export default function AssetListPage() {
     }
 
     return filtered;
-  }, [assets, activeView, searchQuery]);
+  }, [simpleSearchResults, activeView, searchQuery, assets]);
 
   // Get columns for active view in correct order
   const displayedColumns = useMemo(() => {
@@ -603,7 +609,9 @@ export default function AssetListPage() {
 
       <div className="shadow-sm">
         <Toolbar
-          onSearch={() => setSearchOpen(true)}
+          assets={assets}
+          onFilteredResults={setSimpleSearchResults}
+          onOpenAdvancedSearch={() => setSearchOpen(true)}
           onOpenViewSettings={() => setViewSettingsOpen(true)}
           onOpenFilters={handleOpenFilters}
           onOpenColumns={handleOpenColumns}
@@ -761,6 +769,10 @@ export default function AssetListPage() {
         onClose={() => setManageViewsOpen(false)}
         views={views}
         onUpdateViews={setViews}
+        onCreateNewView={() => {
+          setManageViewsOpen(false); // Закрити Manage Views dialog
+          setCreateViewOpen(true); // Відкрити Create View dialog
+        }}
       />
 
       <CreateViewDialog

@@ -17,13 +17,15 @@ interface ManageViewsDialogProps {
   onClose: () => void;
   views: View[];
   onUpdateViews: (views: View[]) => void;
+  onCreateNewView?: () => void; // НОВИЙ: callback для відкриття CreateViewDialog
 }
 
 export default function ManageViewsDialog({
   open,
   onClose,
   views,
-  onUpdateViews
+  onUpdateViews,
+  onCreateNewView
 }: ManageViewsDialogProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -86,8 +88,9 @@ export default function ManageViewsDialog({
 
   // Create new view
   const handleCreateNew = () => {
-    // TODO: Open create view dialog
-    console.log('Create new view');
+    if (onCreateNewView) {
+      onCreateNewView();
+    }
   };
 
   return (

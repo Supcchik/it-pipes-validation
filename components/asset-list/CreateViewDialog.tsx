@@ -87,7 +87,7 @@ export default function CreateViewDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Progress Indicator */}
         <div className="flex items-center justify-center gap-2 mb-4">
           <div className={`w-2 h-2 rounded-full ${step === 'welcome' ? 'bg-orange-500' : 'bg-neutral-300'}`} />
@@ -103,7 +103,7 @@ export default function CreateViewDialog({
               <DialogTitle className="text-2xl">Create New View</DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-6 py-6">
+            <div className="space-y-6 py-6 overflow-y-auto flex-1 min-h-0">
               <div className="text-center space-y-4">
                 <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto">
                   <Star className="w-8 h-8 text-orange-600" />
@@ -170,7 +170,7 @@ export default function CreateViewDialog({
               <DialogTitle>Name Your View</DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4 py-6">
+            <div className="space-y-4 py-6 overflow-y-auto flex-1 min-h-0">
               <div className="space-y-2">
                 <Label htmlFor="view-name">View Name</Label>
                 <Input
@@ -218,7 +218,7 @@ export default function CreateViewDialog({
               <DialogTitle>Choose a Starting Point</DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4 py-6">
+            <div className="space-y-4 py-6 overflow-y-auto flex-1 min-h-0">
               <RadioGroup value={selectedTemplate} onValueChange={setSelectedTemplate}>
                 {/* Blank Template */}
                 <Card 
@@ -246,7 +246,8 @@ export default function CreateViewDialog({
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-neutral-700">Or copy from existing view:</p>
                   
-                  {existingViews.slice(0, 5).map((view) => (
+                  <div className="max-h-64 overflow-y-auto space-y-2 pr-2">
+                    {existingViews.slice(0, 5).map((view) => (
                     <Card
                       key={view.id}
                       className={`cursor-pointer transition-colors ${
@@ -273,7 +274,8 @@ export default function CreateViewDialog({
                         </div>
                       </CardHeader>
                     </Card>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </RadioGroup>
 
@@ -307,7 +309,7 @@ export default function CreateViewDialog({
               <DialogTitle>Review and Create</DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-6 py-6">
+            <div className="space-y-6 py-6 overflow-y-auto flex-1 min-h-0">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">View Summary</CardTitle>

@@ -9,11 +9,14 @@ interface CoreVisionLogoProps {
 
 export default function CoreVisionLogo({ 
   className = '', 
-  height = 32,
+  height,
   width
 }: CoreVisionLogoProps) {
-  // If width not specified, use height to maintain aspect ratio
-  const logoWidth = width || height * 2.5; // Approximate aspect ratio
+  // If width specified, use it (minimum 124px)
+  // If only height specified, calculate width from aspect ratio (approximately 2.5:1)
+  // If neither specified, default to width 124px
+  const logoWidth = width ? Math.max(width, 124) : (height ? Math.max(height * 2.5, 124) : 124);
+  const logoHeight = height || logoWidth / 2.5; // Maintain aspect ratio
 
   return (
     <div className={`flex items-center ${className}`}>
@@ -21,7 +24,7 @@ export default function CoreVisionLogo({
         src="/corevision-logo.png"
         alt="CoreVision"
         width={logoWidth}
-        height={height}
+        height={logoHeight}
         className="object-contain"
         priority
       />
