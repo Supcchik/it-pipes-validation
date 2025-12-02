@@ -24,8 +24,6 @@ import {
   Download,
   Copy,
   Printer,
-  Edit,
-  Trash2,
   Filter,
   Columns
 } from 'lucide-react';
@@ -41,12 +39,8 @@ interface ToolbarProps {
   onOpenColumns?: () => void; // НОВИЙ: Відкрити ViewSettings на вкладці Columns
   onPopOutMap: () => void;
   onPopOutTable: () => void;
-  onExportSelected?: () => void; // НОВИЙ: Експорт вибраних рядків
   onFindReplace?: () => void; // НОВИЙ: Find & Replace
   onGenerateReport?: () => void; // НОВИЙ: Generate Report
-  onEditSelected?: () => void; // НОВИЙ: Редагувати вибрані
-  onDeleteSelected?: () => void; // НОВИЙ: Видалити вибрані
-  selectedRowsCount: number;
   filters?: FilterConfig[];
   visibleColumnsCount?: number; // НОВИЙ: Кількість видимих колонок
   onRemoveFilter?: (filterId: string) => void;
@@ -61,12 +55,8 @@ export default function Toolbar({
   onOpenColumns,
   onPopOutMap,
   onPopOutTable,
-  onExportSelected,
   onFindReplace,
   onGenerateReport,
-  onEditSelected,
-  onDeleteSelected,
-  selectedRowsCount,
   filters = [],
   visibleColumnsCount
 }: ToolbarProps) {
@@ -145,46 +135,6 @@ export default function Toolbar({
               </Tooltip>
             )}
           </div>
-
-          {/* Contextual Actions (when rows selected) - між Group 2 та Group 3 */}
-          {selectedRowsCount > 0 && (
-            <>
-              <div className="h-6 w-px bg-neutral-300 mx-2" />
-              <Badge variant="secondary" className="bg-orange-100 text-orange-700">
-                {selectedRowsCount} selected
-              </Badge>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-sm"
-                onClick={onEditSelected}
-                disabled={!onEditSelected}
-              >
-                <Edit className="mr-2 h-4 w-4" />
-                Edit
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-sm text-red-600 hover:bg-red-50"
-                onClick={onDeleteSelected}
-                disabled={!onDeleteSelected}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-sm"
-                onClick={onExportSelected}
-                disabled={!onExportSelected}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export Selected
-              </Button>
-            </>
-          )}
 
           {/* Visual Separator */}
           <div className="h-6 w-px bg-neutral-300 mx-2" />

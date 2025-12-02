@@ -16,6 +16,7 @@ import ReportDialog from '@/components/asset-list/ReportDialog';
 import ManageViewsDialog from '@/components/asset-list/ManageViewsDialog';
 import ActiveFiltersBar from '@/components/asset-list/ActiveFiltersBar';
 import CreateViewDialog from '@/components/asset-list/CreateViewDialog';
+import FloatingSelectionBar from '@/components/asset-list/FloatingSelectionBar';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
 import type { View, Asset, ColumnDef } from '@/lib/types/asset-list';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
@@ -624,22 +625,8 @@ export default function AssetListPage() {
           onOpenColumns={handleOpenColumns}
           onPopOutMap={handlePopOutMap}
           onPopOutTable={handlePopOutTable}
-          onExportSelected={handleExportSelected}
           onFindReplace={() => setFindReplaceOpen(true)}
           onGenerateReport={() => setReportDialogOpen(true)}
-          onEditSelected={() => {
-            // TODO: Implement bulk edit
-            console.log('Edit selected:', selectedRows);
-          }}
-          onDeleteSelected={() => {
-            // TODO: Implement bulk delete with confirmation
-            if (confirm(`Delete ${selectedRows.length} selected asset(s)?`)) {
-              console.log('Delete selected:', selectedRows);
-              // setAssets(assets.filter(a => !selectedRows.includes(a.id)));
-              setSelectedRows([]);
-            }
-          }}
-          selectedRowsCount={selectedRows.length}
           visibleColumnsCount={displayedColumns?.length || 0}
           filters={activeView?.filters || []}
         />
@@ -675,7 +662,9 @@ export default function AssetListPage() {
                   data={paginatedAssets}
                   columns={displayedColumns}
                   selectedRows={selectedRows}
-                  onRowSelect={setSelectedRows}
+                  onRowSelect={(rowIds) => {
+                    setSelectedRows(rowIds);
+                  }}
                   onRowClick={handleRowClick}
                   onSort={handleSort}
                   onColumnReorder={handleColumnReorder}
@@ -722,6 +711,37 @@ export default function AssetListPage() {
           }
         />
       </div>
+
+      {/* Floating Selection Bar */}
+      <FloatingSelectionBar
+        selectedCount={selectedRows.length}
+        selectedIds={selectedRows}
+        onEdit={() => {
+          // Start inline editing for first selected row
+          if (selectedRows.length > 0 && typeof window !== 'undefined') {
+            const handler = (window as any).__startEditingSelected;
+            if (handler) {
+              handler();
+            }
+          }
+        }}
+        onDelete={() => {
+          if (confirm(`Delete ${selectedRows.length} selected asset(s)?`)) {
+            console.log('Delete selected:', selectedRows);
+            setSelectedRows([]);
+          }
+        }}
+        onExport={handleExportSelected}
+        onOpenInNewWindow={() => {
+          // Open each selected inspection in a new tab
+          selectedRows.forEach((assetId) => {
+            window.open(`/inspection/${assetId}`, '_blank');
+          });
+        }}
+        onClear={() => {
+          setSelectedRows([]);
+        }}
+      />
 
       {/* Dialogs */}
       <ViewSettingsDialog

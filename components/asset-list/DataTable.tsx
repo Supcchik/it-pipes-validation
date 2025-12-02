@@ -122,6 +122,7 @@ interface DataTableProps {
   onSort: (column: string, direction: 'asc' | 'desc') => void;
   onColumnReorder?: (newOrder: string[]) => void;
   onUpdateAsset?: (assetId: string, updates: Partial<Asset>) => void; // НОВИЙ: для inline editing
+  onStartEditing?: (assetId: string) => void; // НОВИЙ: для bulk edit з FloatingSelectionBar
   loading?: boolean;
 }
 
@@ -134,6 +135,7 @@ export default function DataTable({
   onSort,
   onColumnReorder,
   onUpdateAsset,
+  onStartEditing,
   loading = false
 }: DataTableProps) {
   const router = useRouter();
@@ -236,6 +238,36 @@ export default function DataTable({
     setEditingRowId(asset.id);
     setEditingValues({ ...asset });
   };
+
+  // Expose startEditing for external calls (bulk edit from FloatingSelectionBar)
+  useEffect(() => {
+    const handleExternalEdit = () => {
+      if (selectedRows.length > 0 && !editingRowId) {
+        const firstSelected = data.find(asset => asset.id === selectedRows[0]);
+        if (firstSelected) {
+          startEditing(firstSelected);
+          // Scroll to the editing row
+          setTimeout(() => {
+            const row = document.querySelector(`[data-asset-id="${firstSelected.id}"]`);
+            if (row) {
+              row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 100);
+        }
+      }
+    };
+    
+    // Store handler for external calls
+    if (typeof window !== 'undefined') {
+      (window as any).__startEditingSelected = handleExternalEdit;
+    }
+    
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).__startEditingSelected;
+      }
+    };
+  }, [selectedRows, data, editingRowId]);
 
   const cancelEditing = () => {
     setEditingRowId(null);
