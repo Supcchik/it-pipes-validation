@@ -714,32 +714,73 @@ export default function AssetListPage() {
 
       {/* Floating Selection Bar */}
       <FloatingSelectionBar
-        selectedCount={selectedRows.length}
-        selectedIds={selectedRows}
-        onEdit={() => {
-          // Start inline editing for first selected row
-          if (selectedRows.length > 0 && typeof window !== 'undefined') {
-            const handler = (window as any).__startEditingSelected;
-            if (handler) {
-              handler();
-            }
+        selectedAssets={filteredAssets.filter(asset => selectedRows.includes(asset.id))}
+        onClearSelection={() => setSelectedRows([])}
+        onAssignComplete={async (assigneeId: string) => {
+          console.log('Assigning to:', assigneeId);
+          
+          // API call (mock for now)
+          try {
+            await fetch('/api/assets/assign', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                assetIds: selectedRows,
+                assigneeId
+              })
+            });
+            
+            // TODO: Show toast notification
+            console.log(`Assigned ${selectedRows.length} inspections to ${assigneeId}`);
+            
+            // Refresh data would happen here
+            // setSelectedRows([]); // Already cleared in FloatingSelectionBar
+          } catch (error) {
+            console.error('Assign failed:', error);
+            alert('Failed to assign assets. Please try again.');
           }
         }}
-        onDelete={() => {
-          if (confirm(`Delete ${selectedRows.length} selected asset(s)?`)) {
-            console.log('Delete selected:', selectedRows);
-            setSelectedRows([]);
-          }
+        onEditComplete={() => {
+          // Edit navigation is handled in FloatingSelectionBar
+          // This callback is for future inline edit modal
         }}
-        onExport={handleExportSelected}
-        onOpenInNewWindow={() => {
-          // Open each selected inspection in a new tab
-          selectedRows.forEach((assetId) => {
-            window.open(`/inspection/${assetId}`, '_blank');
+        onDeleteComplete={async () => {
+          // Remove deleted assets from state
+          setAssets(prev => 
+            prev.filter(asset => !selectedRows.includes(asset.id))
+          );
+          
+          // TODO: Show toast notification
+          console.log(`Deleted ${selectedRows.length} assets`);
+          
+          // setSelectedRows([]); // Already cleared in FloatingSelectionBar
+        }}
+        onExportComplete={async () => {
+          // Call existing export handler
+          await handleExportSelected();
+          
+          // TODO: Show toast notification
+          console.log(`Exported ${selectedRows.length} assets`);
+        }}
+        onOpenInTabs={() => {
+          // This is handled in FloatingSelectionBar, but we can add additional logic here if needed
+          const selectedAssets = filteredAssets.filter(asset => selectedRows.includes(asset.id));
+          const count = selectedAssets.length;
+          
+          // Warning for many tabs
+          if (count > 10) {
+            const confirmed = confirm(
+              `Open ${count} tabs? This may slow down your browser.`
+            );
+            if (!confirmed) return;
+          }
+
+          // Open each asset in new tab with small delay
+          selectedAssets.forEach((asset, index) => {
+            setTimeout(() => {
+              window.open(`/inspection/${asset.id}`, '_blank');
+            }, index * 100); // 100ms delay between each to avoid browser blocking
           });
-        }}
-        onClear={() => {
-          setSelectedRows([]);
         }}
       />
 
