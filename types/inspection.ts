@@ -110,3 +110,16 @@ export interface ScreenshotComparisonState {
   synchronizedPan: boolean;
 }
 
+// Smart Find types
+export interface MatchResult {
+  observation: Observation;
+  distance: number;
+  confidence: number; // 0-1 (0-100%)
+  distanceDiff: number; // різниця в футах
+}
+
+export interface SmartFindOptions {
+  primaryTolerance: number; // default 1.5
+  fallbackTolerance: number; // default 5.0
+}
+
