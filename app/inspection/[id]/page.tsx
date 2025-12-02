@@ -1694,7 +1694,7 @@ export default function InspectionPage() {
           <div className="flex items-center gap-4">
             {/* Back Button */}
             <button 
-              onClick={() => router.push('/assets')}
+              onClick={() => router.push('/')}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               title="Back to inspections list"
             >
