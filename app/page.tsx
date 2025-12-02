@@ -95,9 +95,16 @@ export default function AssetListPage() {
   const filteredAssets = useMemo(() => {
     // Start with simple search results (or all assets if no simple search active)
     // simpleSearchResults === null means no search active, use all assets
-    // simpleSearchResults === [] means search active but no results found
+    // simpleSearchResults === [] means search active but no results found (return empty)
     // simpleSearchResults === [assets] means search active with results
-    let filtered = simpleSearchResults === null ? [...assets] : [...simpleSearchResults];
+    let filtered: Asset[];
+    if (simpleSearchResults === null) {
+      // No search active, use all assets
+      filtered = [...assets];
+    } else {
+      // Search active - use results (even if empty array)
+      filtered = [...simpleSearchResults];
+    }
     
     if (!filtered || filtered.length === 0) {
       return [];

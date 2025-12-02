@@ -66,7 +66,8 @@ export default function SearchBar({
     } else {
       onFilteredResults(filtered);
     }
-  }, [filtered, onFilteredResults, query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, query]); // onFilteredResults is stable, no need to include
 
   return (
     <div className="relative w-96">

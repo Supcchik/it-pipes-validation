@@ -146,7 +146,7 @@ export default function DataTable({
     setIsMounted(true);
   }, []);
 
-  // Drag and drop sensors
+  // Drag and drop sensors - MUST be called before any early returns
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -157,6 +157,50 @@ export default function DataTable({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Handle keyboard navigation - MUST be called before any early returns
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Escape key: cancel editing or deselect
+      if (e.key === 'Escape') {
+        if (editingRowId) {
+          setEditingRowId(null);
+          setEditingValues({});
+        } else if (selectedRows.length > 0) {
+          onRowSelect([]);
+        }
+      }
+      
+      // Arrow keys: navigate between rows (when not editing)
+      if (!editingRowId && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+        e.preventDefault();
+        const currentIndex = selectedRows.length > 0 
+          ? data.findIndex(a => a.id === selectedRows[0])
+          : -1;
+        
+        if (e.key === 'ArrowDown' && currentIndex < data.length - 1) {
+          const nextAsset = data[currentIndex + 1];
+          onRowSelect([nextAsset.id]);
+          // Scroll to row
+          setTimeout(() => {
+            const row = document.querySelector(`[data-asset-id="${nextAsset.id}"]`);
+            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
+        } else if (e.key === 'ArrowUp' && currentIndex > 0) {
+          const prevAsset = data[currentIndex - 1];
+          onRowSelect([prevAsset.id]);
+          // Scroll to row
+          setTimeout(() => {
+            const row = document.querySelector(`[data-asset-id="${prevAsset.id}"]`);
+            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 100);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editingRowId, selectedRows, data, onRowSelect]);
 
   // Handle drag end for columns
   const handleDragEnd = (event: DragEndEvent) => {
@@ -264,37 +308,6 @@ export default function DataTable({
     console.log('Delete asset:', asset.id);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-4 border-neutral-200 border-t-orange-600 rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-neutral-600">Loading assets...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (data.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto">
-            <svg className="w-8 h-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-            </svg>
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-neutral-900">No assets found</h3>
-            <p className="text-sm text-neutral-600 mt-1">
-              No assets match your current filters. Try removing some filters.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const allSelected = data.length > 0 && selectedRows.length === data.length;
 
   // Render header row content
@@ -341,7 +354,7 @@ export default function DataTable({
         )}
       </TableHeader>
       <TableBody>
-          {data.map((asset, index) => {
+          {data.length > 0 ? data.map((asset, index) => {
             const isSelected = selectedRows.includes(asset.id);
             const isEditing = editingRowId === asset.id;
             return (
@@ -481,53 +494,17 @@ export default function DataTable({
                 </TableCell>
               </TableRow>
             );
-          })}
+          }) : (
+            <TableRow>
+              <TableCell colSpan={columns.length + 2} className="text-center py-8 text-neutral-500">
+                No assets found
+              </TableCell>
+            </TableRow>
+          )}
       </TableBody>
     </Table>
   );
 
-  // Handle keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Escape key: cancel editing or deselect
-      if (e.key === 'Escape') {
-        if (editingRowId) {
-          cancelEditing();
-        } else if (selectedRows.length > 0) {
-          onRowSelect([]);
-        }
-      }
-      
-      // Arrow keys: navigate between rows (when not editing)
-      if (!editingRowId && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
-        e.preventDefault();
-        const currentIndex = selectedRows.length > 0 
-          ? data.findIndex(a => a.id === selectedRows[0])
-          : -1;
-        
-        if (e.key === 'ArrowDown' && currentIndex < data.length - 1) {
-          const nextAsset = data[currentIndex + 1];
-          onRowSelect([nextAsset.id]);
-          // Scroll to row
-          setTimeout(() => {
-            const row = document.querySelector(`[data-asset-id="${nextAsset.id}"]`);
-            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 100);
-        } else if (e.key === 'ArrowUp' && currentIndex > 0) {
-          const prevAsset = data[currentIndex - 1];
-          onRowSelect([prevAsset.id]);
-          // Scroll to row
-          setTimeout(() => {
-            const row = document.querySelector(`[data-asset-id="${prevAsset.id}"]`);
-            row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 100);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editingRowId, selectedRows, data, onRowSelect]);
 
   // Wrap table in DndContext if drag-to-reorder is enabled and mounted
   return (
@@ -539,7 +516,30 @@ export default function DataTable({
           : 'No assets selected'}
       </div>
       
-      {onColumnReorder && isMounted ? (
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center space-y-3">
+            <div className="w-8 h-8 border-4 border-neutral-200 border-t-orange-600 rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-neutral-600">Loading assets...</p>
+          </div>
+        </div>
+      ) : data.length === 0 ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto">
+              <svg className="w-8 h-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-neutral-900">No assets found</h3>
+              <p className="text-sm text-neutral-600 mt-1">
+                No assets match your current filters. Try removing some filters.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : onColumnReorder && isMounted ? (
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
