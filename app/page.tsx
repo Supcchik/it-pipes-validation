@@ -12,7 +12,7 @@ import Pagination from '@/components/asset-list/Pagination';
 import ViewSettingsDialog from '@/components/asset-list/ViewSettingsDialog';
 import SearchDialog, { type SearchQuery } from '@/components/asset-list/SearchDialog';
 import FindReplaceDialog, { type ReplaceOperation } from '@/components/asset-list/FindReplaceDialog';
-import ReportDialog from '@/components/asset-list/ReportDialog';
+import ReportGenerationDialog from '@/components/asset-list/ReportGenerationDialog';
 import ManageViewsDialog from '@/components/asset-list/ManageViewsDialog';
 import ActiveFiltersBar from '@/components/asset-list/ActiveFiltersBar';
 import CreateViewDialog from '@/components/asset-list/CreateViewDialog';
@@ -945,13 +945,12 @@ export default function AssetListPage() {
         onReplace={handleFindReplace}
       />
 
-      <ReportDialog
+      <ReportGenerationDialog
         open={reportDialogOpen}
         onClose={() => setReportDialogOpen(false)}
-        assets={filteredAssets}
-        selectedAssetIds={selectedRows}
-        currentView={activeView}
-        onGenerate={handleGenerateReport}
+        totalAssets={assets.length}
+        filteredAssets={filteredAssets.length}
+        selectedAssets={selectedRows.length}
       />
 
       <ManageViewsDialog
