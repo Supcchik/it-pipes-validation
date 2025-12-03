@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FileText, Loader2, CheckCircle2, Download, Eye, Target, Settings, Eye as EyeIcon, CheckCircle, ArrowRight, Share2, RotateCcw, Filter, List, Map, Image, BarChart3, ShieldCheck, FileCheck, Calendar, User } from 'lucide-react';
+import { FileText, Loader2, CheckCircle2, Download, Eye, Target, Settings, Eye as EyeIcon, CheckCircle, Share2, RotateCcw, Filter, List, Image, BarChart3, ShieldCheck, FileCheck, Calendar, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,14 +31,43 @@ interface ReportConfig {
   scope: ReportScope;
   inspectionFilter: InspectionFilter;
   sections: {
+    // Essential
     coverPage: boolean;
     executiveSummary: boolean;
     mapOverview: boolean;
-    assetList: boolean;
-    detailedInspections: boolean;
-    inspectionPhotos: boolean;
-    observationCharts: boolean;
+    assetListTable: boolean;
+    
+    // Project Information
+    projectInformation: boolean;
+    projectSummary: boolean;
+    
+    // Inclination Analysis
+    inclinationGraph: boolean;
+    inclinationDepth: boolean;
+    inclinationTabular: boolean;
+    
+    // Defect Reports
+    defectListing: boolean;
+    defectPlotCenter: boolean;
+    defectPlotCenterWithImages: boolean;
+    defectPlotLeft: boolean;
+    defectPlotLeftScaled: boolean;
+    defectPlotLeftWithImages: boolean;
+    
+    // Inspection Photos
+    images4PerPage: boolean;
+    images2PerPage: boolean;
+    images1PerPage: boolean;
+    
+    // Compliance
     pacpCompliance: boolean;
+    pacpConditions: boolean;
+  };
+  display: {
+    headerStyle: 'alias' | 'description' | 'code';
+    codeDisplay: 'code' | 'description' | 'both';
+    showColors: boolean;
+    individualPDFs: boolean;
   };
   details: {
     projectName: string;
@@ -57,18 +86,48 @@ export default function ReportGenerationDialog({
   selectedAssets
 }: ReportGenerationDialogProps) {
   const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [selectedPreset, setSelectedPreset] = useState<'custom' | 'standard' | 'compliance' | 'visual' | 'executive'>('custom');
   const [config, setConfig] = useState<ReportConfig>({
     scope: 'filtered',
     inspectionFilter: 'newest',
     sections: {
+      // Essential
       coverPage: true,
       executiveSummary: true,
       mapOverview: true,
-      assetList: true,
-      detailedInspections: true,
-      inspectionPhotos: false,
-      observationCharts: false,
+      assetListTable: true,
+      
+      // Project Information
+      projectInformation: false,
+      projectSummary: false,
+      
+      // Inclination Analysis
+      inclinationGraph: false,
+      inclinationDepth: false,
+      inclinationTabular: false,
+      
+      // Defect Reports
+      defectListing: true,
+      defectPlotCenter: false,
+      defectPlotCenterWithImages: false,
+      defectPlotLeft: false,
+      defectPlotLeftScaled: false,
+      defectPlotLeftWithImages: false,
+      
+      // Inspection Photos
+      images4PerPage: false,
+      images2PerPage: false,
+      images1PerPage: false,
+      
+      // Compliance
       pacpCompliance: true,
+      pacpConditions: false,
+    },
+    display: {
+      headerStyle: 'alias',
+      codeDisplay: 'description',
+      showColors: false,
+      individualPDFs: false,
     },
     details: {
       projectName: 'CityTestQA Project',
@@ -99,21 +158,63 @@ export default function ReportGenerationDialog({
   };
 
   const getEstimatedPages = () => {
+    const assetCount = getAssetCount();
+    const inspectionCount = getInspectionCount();
     let pages = 0;
+    
+    // Essential sections
     if (config.sections.coverPage) pages += 1;
     if (config.sections.executiveSummary) pages += 2;
     if (config.sections.mapOverview) pages += 1;
-    if (config.sections.assetList) pages += Math.ceil(getAssetCount() / 30); // 30 per page
-    if (config.sections.detailedInspections) pages += getInspectionCount(); // 1 per inspection
-    if (config.sections.observationCharts) pages += 2;
+    if (config.sections.assetListTable) pages += Math.ceil(assetCount / 30); // 30 assets per page
+    
+    // Project Information
+    if (config.sections.projectInformation) pages += 2;
+    if (config.sections.projectSummary) pages += 1;
+    
+    // Inclination Analysis
+    if (config.sections.inclinationGraph) pages += Math.ceil(inspectionCount / 4); // 4 graphs per page
+    if (config.sections.inclinationDepth) pages += Math.ceil(inspectionCount / 4);
+    if (config.sections.inclinationTabular) pages += Math.ceil(inspectionCount / 10); // 10 per page
+    
+    // Defect Reports
+    if (config.sections.defectListing) pages += Math.ceil(inspectionCount / 5); // 5 per page
+    if (config.sections.defectPlotCenter) pages += inspectionCount; // 1 per inspection
+    if (config.sections.defectPlotCenterWithImages) pages += inspectionCount * 2; // More space for images
+    if (config.sections.defectPlotLeft) pages += inspectionCount;
+    if (config.sections.defectPlotLeftScaled) pages += inspectionCount;
+    if (config.sections.defectPlotLeftWithImages) pages += inspectionCount * 2;
+    
+    // Inspection Photos
+    if (config.sections.images4PerPage) pages += Math.ceil(inspectionCount * 4 / 4); // Avg 4 photos per inspection
+    if (config.sections.images2PerPage) pages += Math.ceil(inspectionCount * 4 / 2);
+    if (config.sections.images1PerPage) pages += inspectionCount * 4;
+    
+    // Compliance
+    if (config.sections.pacpCompliance) pages += Math.ceil(inspectionCount / 10);
+    if (config.sections.pacpConditions) pages += Math.ceil(inspectionCount / 8);
+    
     return pages;
   };
 
   const getEstimatedFileSize = () => {
-    let sizeMB = 0.5; // Base PDF
-    sizeMB += getEstimatedPages() * 0.1; // 100KB per page
-    if (config.sections.inspectionPhotos) sizeMB += getInspectionCount() * 2; // 2MB per photo
+    const inspectionCount = getInspectionCount();
+    const pages = getEstimatedPages();
+    let sizeMB = 0.5; // Base PDF overhead
+    
+    // Base page size
+    sizeMB += pages * 0.1; // 100KB per page
+    
+    // Add size for image-heavy sections
     if (config.sections.mapOverview) sizeMB += 1; // Map image
+    if (config.sections.defectPlotCenterWithImages) sizeMB += inspectionCount * 0.5; // 500KB per inspection
+    if (config.sections.defectPlotLeftWithImages) sizeMB += inspectionCount * 0.5;
+    
+    // Photo sections (major file size impact)
+    if (config.sections.images4PerPage) sizeMB += inspectionCount * 2; // ~2MB per inspection (4 photos)
+    if (config.sections.images2PerPage) sizeMB += inspectionCount * 3; // ~3MB per inspection (larger photos)
+    if (config.sections.images1PerPage) sizeMB += inspectionCount * 5; // ~5MB per inspection (full page)
+    
     return sizeMB > 1 ? `~${sizeMB.toFixed(1)} MB` : `~${Math.round(sizeMB * 1000)} KB`;
   };
 
@@ -200,7 +301,16 @@ export default function ReportGenerationDialog({
       case 1:
         return <Step1Scope config={config} setConfig={setConfig} totalAssets={totalAssets} filteredAssets={filteredAssets} selectedAssets={selectedAssets} />;
       case 2:
-        return <Step2Options config={config} setConfig={setConfig} getEstimatedPages={getEstimatedPages} getEstimatedFileSize={getEstimatedFileSize} />;
+        return <Step2Options 
+          config={config} 
+          setConfig={setConfig} 
+          selectedPreset={selectedPreset}
+          setSelectedPreset={setSelectedPreset}
+          getEstimatedPages={getEstimatedPages} 
+          getEstimatedFileSize={getEstimatedFileSize}
+          assetCount={getAssetCount()}
+          inspectionCount={getInspectionCount()}
+        />;
       case 3:
         return <Step3Preview config={config} />;
       case 4:
@@ -322,7 +432,19 @@ export default function ReportGenerationDialog({
 }
 
 // Step 1 Component
-function Step1Scope({ config, setConfig, totalAssets, filteredAssets, selectedAssets }: any) {
+function Step1Scope({ 
+  config, 
+  setConfig, 
+  totalAssets, 
+  filteredAssets, 
+  selectedAssets 
+}: {
+  config: ReportConfig;
+  setConfig: React.Dispatch<React.SetStateAction<ReportConfig>>;
+  totalAssets: number;
+  filteredAssets: number;
+  selectedAssets: number;
+}) {
   const assetCounts = {
     selected: selectedAssets,
     filtered: filteredAssets,
@@ -491,16 +613,130 @@ function Step1Scope({ config, setConfig, totalAssets, filteredAssets, selectedAs
   );
 }
 
+// Package Presets
+const PACKAGE_PRESETS = {
+  standard: {
+    name: 'Standard Report',
+    sections: {
+      coverPage: true,
+      executiveSummary: true,
+      mapOverview: true,
+      assetListTable: true,
+      defectListing: true,
+      pacpCompliance: true,
+    },
+  },
+  compliance: {
+    name: 'Compliance Report',
+    sections: {
+      coverPage: true,
+      projectInformation: true,
+      assetListTable: true,
+      defectListing: true,
+      pacpConditions: true,
+      pacpCompliance: true,
+    },
+  },
+  visual: {
+    name: 'Visual Report',
+    sections: {
+      coverPage: true,
+      mapOverview: true,
+      defectPlotCenterWithImages: true,
+      inclinationGraph: true,
+      images2PerPage: true,
+    },
+  },
+  executive: {
+    name: 'Executive Summary',
+    sections: {
+      coverPage: true,
+      executiveSummary: true,
+      mapOverview: true,
+      projectSummary: true,
+    },
+  },
+};
+
+// Template Section Component
+interface TemplateSectionProps {
+  title: string;
+  sections: Array<{
+    key: string;
+    label: string;
+    description: string;
+    recommended?: boolean;
+    fileImpact?: string;
+  }>;
+  config: ReportConfig;
+  onToggle: (key: string) => void;
+}
+
+function TemplateSection({ title, sections, config, onToggle }: TemplateSectionProps) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm font-semibold">{title}</Label>
+      </div>
+      
+      <div className="space-y-2">
+        {sections.map((section) => (
+          <div key={section.key} className="border border-neutral-200 rounded-lg p-3 hover:border-blue-300 transition-colors">
+            <div className="flex items-start space-x-3">
+              <Checkbox
+                id={section.key}
+                checked={config.sections[section.key as keyof typeof config.sections] as boolean}
+                onCheckedChange={() => onToggle(section.key)}
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={section.key} className="font-medium cursor-pointer">
+                    {section.label}
+                  </Label>
+                  {section.recommended && (
+                    <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                      Recommended
+                    </span>
+                  )}
+                  {section.fileImpact && (
+                    <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full">
+                      {section.fileImpact}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-neutral-600 mt-1">
+                  {section.description}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Step 2 Component
-function Step2Options({ config, setConfig, getEstimatedPages, getEstimatedFileSize }: any) {
-  const toggleSection = (key: keyof typeof config.sections) => {
+function Step2Options({ 
+  config, 
+  setConfig, 
+  selectedPreset,
+  setSelectedPreset,
+  getEstimatedPages, 
+  getEstimatedFileSize,
+  assetCount,
+  inspectionCount
+}: any) {
+  const toggleSection = (key: string) => {
     setConfig({
       ...config,
       sections: {
         ...config.sections,
-        [key]: !config.sections[key],
+        [key]: !(config.sections[key as keyof typeof config.sections] as boolean),
       },
     });
+    setSelectedPreset('custom');
   };
 
   const updateDetail = (key: keyof typeof config.details, value: string) => {
@@ -513,119 +749,449 @@ function Step2Options({ config, setConfig, getEstimatedPages, getEstimatedFileSi
     });
   };
 
-  const sectionGroups = {
-    essential: [
-      { key: 'coverPage', title: 'Cover Page', description: 'Project title, date, inspector name', icon: FileText, recommended: true },
-      { key: 'executiveSummary', title: 'Executive Summary', description: 'Key findings, statistics, recommendations', icon: BarChart3, recommended: true },
-      { key: 'mapOverview', title: 'Map Overview', description: 'Geographic overview with asset locations', icon: Map, recommended: true },
-      { key: 'assetList', title: 'Asset List Table', description: 'Tabular data with all asset information', icon: List, recommended: true },
-    ],
-    optional: [
-      { key: 'detailedInspections', title: 'Detailed Inspections', description: 'One page per inspection with observations', icon: FileCheck },
-      { key: 'inspectionPhotos', title: 'Inspection Photos', description: 'Embed photos in detailed pages (increases file size)', icon: Image, sizeImpact: '+15MB' },
-      { key: 'observationCharts', title: 'Observation Charts', description: 'Visual charts showing defect distribution', icon: BarChart3 },
-    ],
-    compliance: [
-      { key: 'pacpCompliance', title: 'PACP/NASCO Compliance', description: 'Include compliance scores and validation', icon: ShieldCheck, recommended: true },
-    ],
+  const updateDisplay = (key: keyof typeof config.display, value: string | boolean) => {
+    setConfig({
+      ...config,
+      display: {
+        headerStyle: config.display?.headerStyle || 'alias',
+        codeDisplay: config.display?.codeDisplay || 'description',
+        showColors: config.display?.showColors || false,
+        individualPDFs: config.display?.individualPDFs || false,
+        [key]: value,
+      },
+    });
+  };
+
+  const applyPreset = (presetKey: 'standard' | 'compliance' | 'visual' | 'executive') => {
+    const preset = PACKAGE_PRESETS[presetKey];
+    setSelectedPreset(presetKey);
+    
+    // Reset all sections to false, then apply preset
+    const newSections = { ...config.sections };
+    (Object.keys(newSections) as Array<keyof typeof newSections>).forEach(key => {
+      newSections[key] = false;
+    });
+    
+    // Apply preset sections
+    (Object.keys(preset.sections) as Array<keyof typeof preset.sections>).forEach(key => {
+      if (key in newSections) {
+        newSections[key] = preset.sections[key] as boolean;
+      }
+    });
+    
+    setConfig({
+      ...config,
+      sections: newSections,
+    });
+  };
+
+  const handleCustomPreset = () => {
+    setSelectedPreset('custom');
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold mb-2">Report Options</h3>
+        <h3 className="text-lg font-semibold mb-2">Configure Report Sections</h3>
         <p className="text-sm text-neutral-600">
-          Configure what to include in your report
+          Select report templates and configure display options
         </p>
       </div>
 
       <div className="h-px bg-neutral-200" />
 
-      <div className="space-y-6">
-        {/* Essential Sections */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Label className="text-sm font-semibold">Essential Sections</Label>
-            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Recommended</span>
-          </div>
-          <div className="space-y-2">
-            {sectionGroups.essential.map(({ key, title, description, icon: Icon, recommended }) => (
-              <div key={key} className="flex items-start space-x-3 p-3 border border-neutral-200 rounded-lg hover:border-blue-300 transition-colors">
-                <Checkbox
-                  id={key}
-                  checked={config.sections[key as keyof typeof config.sections]}
-                  onCheckedChange={() => toggleSection(key as keyof typeof config.sections)}
-                />
-                <Icon className="w-5 h-5 text-blue-600 mt-0.5" />
+      {/* Package Presets */}
+      <div className="space-y-2">
+        <Label className="text-sm font-semibold">Package Presets</Label>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={selectedPreset === 'custom' ? 'default' : 'outline'}
+            size="sm"
+            onClick={handleCustomPreset}
+          >
+            Custom
+          </Button>
+          <Button
+            variant={selectedPreset === 'standard' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => applyPreset('standard')}
+          >
+            Standard Report
+          </Button>
+          <Button
+            variant={selectedPreset === 'compliance' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => applyPreset('compliance')}
+          >
+            Compliance
+          </Button>
+          <Button
+            variant={selectedPreset === 'visual' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => applyPreset('visual')}
+          >
+            Visual
+          </Button>
+          <Button
+            variant={selectedPreset === 'executive' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => applyPreset('executive')}
+          >
+            Executive
+          </Button>
+        </div>
+      </div>
+
+      <div className="h-px bg-neutral-200" />
+
+      {/* Essential Sections */}
+      <TemplateSection
+        title="Essential Sections"
+        sections={[
+          {
+            key: 'coverPage',
+            label: 'Cover Page',
+            description: 'Project title, date, inspector information',
+            recommended: true,
+          },
+          {
+            key: 'executiveSummary',
+            label: 'Executive Summary',
+            description: 'Key findings, statistics, recommendations',
+            recommended: true,
+          },
+          {
+            key: 'mapOverview',
+            label: 'Map Overview',
+            description: 'Geographic overview with asset locations',
+            recommended: true,
+          },
+          {
+            key: 'assetListTable',
+            label: 'Asset List Table',
+            description: 'Tabular data with all asset information',
+            recommended: true,
+          },
+        ]}
+        config={config}
+        onToggle={toggleSection}
+      />
+
+      <div className="h-px bg-neutral-200" />
+
+      {/* Project Information */}
+      <TemplateSection
+        title="Project Information"
+        sections={[
+          {
+            key: 'projectInformation',
+            label: 'Project Information',
+            description: 'Detailed project metadata and specifications',
+          },
+          {
+            key: 'projectSummary',
+            label: 'Project Summary',
+            description: 'High-level project overview and scope',
+          },
+        ]}
+        config={config}
+        onToggle={toggleSection}
+      />
+
+      <div className="h-px bg-neutral-200" />
+
+      {/* Inclination Analysis */}
+      <TemplateSection
+        title="Inclination Analysis"
+        sections={[
+          {
+            key: 'inclinationGraph',
+            label: 'Inclination Graph',
+            description: 'Visual graph showing pipe inclination changes',
+          },
+          {
+            key: 'inclinationDepth',
+            label: 'Inclination Depth Chart',
+            description: 'Depth-based inclination visualization',
+          },
+          {
+            key: 'inclinationTabular',
+            label: 'Inclination Tabular',
+            description: 'Tabular inclination data with measurements',
+          },
+        ]}
+        config={config}
+        onToggle={toggleSection}
+      />
+
+      <div className="h-px bg-neutral-200" />
+
+      {/* Defect Reports */}
+      <TemplateSection
+        title="Defect Reports"
+        sections={[
+          {
+            key: 'defectListing',
+            label: 'Defect Listing',
+            description: 'Comprehensive table of all defects found',
+          },
+          {
+            key: 'defectPlotCenter',
+            label: 'Defect Plot Center',
+            description: 'Center-aligned defect location plot',
+          },
+          {
+            key: 'defectPlotCenterWithImages',
+            label: 'Defect Plot Center with Images',
+            description: 'Center plot with embedded defect photos',
+            fileImpact: '+10MB',
+          },
+          {
+            key: 'defectPlotLeft',
+            label: 'Defect Plot Left',
+            description: 'Left-aligned defect location visualization',
+          },
+          {
+            key: 'defectPlotLeftScaled',
+            label: 'Defect Plot Left Scaled',
+            description: 'Scaled left-aligned plot for better detail',
+          },
+          {
+            key: 'defectPlotLeftWithImages',
+            label: 'Defect Plot Left with Images',
+            description: 'Left plot with embedded defect photos',
+            fileImpact: '+10MB',
+          },
+        ]}
+        config={config}
+        onToggle={toggleSection}
+      />
+
+      <div className="h-px bg-neutral-200" />
+
+      {/* Inspection Photos */}
+      <TemplateSection
+        title="Inspection Photos"
+        sections={[
+          {
+            key: 'images4PerPage',
+            label: 'Images - 4 Per Page',
+            description: 'Standard photo layout (smaller thumbnails)',
+            fileImpact: '+8MB',
+          },
+          {
+            key: 'images2PerPage',
+            label: 'Images - 2 Per Page',
+            description: 'Detailed photo layout (medium size)',
+            fileImpact: '+12MB',
+          },
+          {
+            key: 'images1PerPage',
+            label: 'Images - 1 Per Page',
+            description: 'High-quality photo layout (full page)',
+            fileImpact: '+20MB',
+          },
+        ]}
+        config={config}
+        onToggle={toggleSection}
+      />
+
+      <div className="h-px bg-neutral-200" />
+
+      {/* Compliance & Standards */}
+      <TemplateSection
+        title="Compliance & Standards"
+        sections={[
+          {
+            key: 'pacpCompliance',
+            label: 'PACP/NASCO Compliance',
+            description: 'Include compliance scores and validation results',
+            recommended: true,
+          },
+          {
+            key: 'pacpConditions',
+            label: 'PACP Conditions Report',
+            description: 'Detailed PACP condition assessments',
+          },
+        ]}
+        config={config}
+        onToggle={toggleSection}
+      />
+
+      <div className="h-px bg-neutral-200" />
+
+      {/* Display Configuration */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Settings className="w-4 h-4 text-neutral-600" />
+          <Label className="text-sm font-semibold">Display Configuration</Label>
+        </div>
+        
+        {/* Header Style */}
+        <div className="border border-neutral-200 rounded-lg p-4 bg-neutral-50/50">
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-neutral-700">Header Style</Label>
+            <p className="text-xs text-neutral-500">Choose how column headers are displayed in the report</p>
+            <RadioGroup
+              value={config.display?.headerStyle || 'alias'}
+              onValueChange={(value) => updateDisplay('headerStyle', value)}
+              className="space-y-2"
+            >
+              <label
+                htmlFor="header-alias"
+                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  config.display?.headerStyle === 'alias'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
+                }`}
+              >
+                <RadioGroupItem value="alias" id="header-alias" />
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={key} className="font-medium cursor-pointer">
-                      {title}
-                    </Label>
-                    {recommended && (
-                      <span className="text-xs text-blue-600">★</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-neutral-600 mt-0.5">{description}</p>
+                  <Label htmlFor="header-alias" className="font-medium cursor-pointer text-sm">
+                    Alias
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Use friendly column names</p>
                 </div>
-              </div>
-            ))}
+              </label>
+              <label
+                htmlFor="header-desc"
+                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  config.display?.headerStyle === 'description'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
+                }`}
+              >
+                <RadioGroupItem value="description" id="header-desc" />
+                <div className="flex-1">
+                  <Label htmlFor="header-desc" className="font-medium cursor-pointer text-sm">
+                    Description
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Use full descriptive names</p>
+                </div>
+              </label>
+              <label
+                htmlFor="header-code"
+                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  config.display?.headerStyle === 'code'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
+                }`}
+              >
+                <RadioGroupItem value="code" id="header-code" />
+                <div className="flex-1">
+                  <Label htmlFor="header-code" className="font-medium cursor-pointer text-sm">
+                    Code
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Use technical code identifiers</p>
+                </div>
+              </label>
+            </RadioGroup>
           </div>
         </div>
-
-        {/* Optional Sections */}
-        <div className="space-y-3">
-          <Label className="text-sm font-semibold">Optional Sections</Label>
-          <div className="space-y-2">
-            {sectionGroups.optional.map(({ key, title, description, icon: Icon, sizeImpact }) => (
-              <div key={key} className="flex items-start space-x-3 p-3 border border-neutral-200 rounded-lg hover:border-blue-300 transition-colors">
-                <Checkbox
-                  id={key}
-                  checked={config.sections[key as keyof typeof config.sections]}
-                  onCheckedChange={() => toggleSection(key as keyof typeof config.sections)}
-                />
-                <Icon className="w-5 h-5 text-neutral-600 mt-0.5" />
+        
+        {/* Code Display */}
+        <div className="border border-neutral-200 rounded-lg p-4 bg-neutral-50/50">
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-neutral-700">Code Display</Label>
+            <p className="text-xs text-neutral-500">Choose how codes are shown in the report</p>
+            <RadioGroup
+              value={config.display?.codeDisplay || 'description'}
+              onValueChange={(value) => updateDisplay('codeDisplay', value)}
+              className="space-y-2"
+            >
+              <label
+                htmlFor="code-code"
+                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  config.display?.codeDisplay === 'code'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
+                }`}
+              >
+                <RadioGroupItem value="code" id="code-code" />
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={key} className="font-medium cursor-pointer">
-                      {title}
-                    </Label>
-                    {sizeImpact && (
-                      <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">{sizeImpact}</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-neutral-600 mt-0.5">{description}</p>
+                  <Label htmlFor="code-code" className="font-medium cursor-pointer text-sm">
+                    Code Only
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Show only code values (e.g., "A1")</p>
                 </div>
-              </div>
-            ))}
+              </label>
+              <label
+                htmlFor="code-desc"
+                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  config.display?.codeDisplay === 'description'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
+                }`}
+              >
+                <RadioGroupItem value="description" id="code-desc" />
+                <div className="flex-1">
+                  <Label htmlFor="code-desc" className="font-medium cursor-pointer text-sm">
+                    Description Only
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Show only descriptive text</p>
+                </div>
+              </label>
+              <label
+                htmlFor="code-both"
+                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                  config.display?.codeDisplay === 'both'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
+                }`}
+              >
+                <RadioGroupItem value="both" id="code-both" />
+                <div className="flex-1">
+                  <Label htmlFor="code-both" className="font-medium cursor-pointer text-sm">
+                    Code & Description
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Show both code and description</p>
+                </div>
+              </label>
+            </RadioGroup>
           </div>
         </div>
-
-        {/* Compliance */}
-        <div className="space-y-3">
-          <Label className="text-sm font-semibold">Compliance</Label>
-          <div className="space-y-2">
-            {sectionGroups.compliance.map(({ key, title, description, icon: Icon, recommended }) => (
-              <div key={key} className="flex items-start space-x-3 p-3 border border-green-200 bg-green-50 rounded-lg">
+        
+        {/* Additional Options */}
+        <div className="border border-neutral-200 rounded-lg p-4 bg-neutral-50/50">
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-neutral-700">Additional Options</Label>
+            <p className="text-xs text-neutral-500">Enable extra features for enhanced reports</p>
+            <div className="space-y-2">
+              <label
+                htmlFor="show-colors"
+                className="flex items-start space-x-3 p-3 rounded-lg border border-neutral-200 hover:border-blue-300 hover:bg-neutral-50 cursor-pointer transition-all"
+              >
                 <Checkbox
-                  id={key}
-                  checked={config.sections[key as keyof typeof config.sections]}
-                  onCheckedChange={() => toggleSection(key as keyof typeof config.sections)}
+                  id="show-colors"
+                  checked={config.display?.showColors || false}
+                  onCheckedChange={(checked) => updateDisplay('showColors', checked as boolean)}
+                  className="mt-0.5"
                 />
-                <Icon className="w-5 h-5 text-green-600 mt-0.5" />
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor={key} className="font-medium cursor-pointer">
-                      {title}
-                    </Label>
-                    {recommended && (
-                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Recommended</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-neutral-600 mt-0.5">{description}</p>
+                  <Label htmlFor="show-colors" className="font-medium cursor-pointer text-sm">
+                    Show color-coded severity indicators
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Add visual color indicators for defect severity levels</p>
                 </div>
-              </div>
-            ))}
+              </label>
+              <label
+                htmlFor="individual-pdfs"
+                className="flex items-start space-x-3 p-3 rounded-lg border border-neutral-200 hover:border-blue-300 hover:bg-neutral-50 cursor-pointer transition-all"
+              >
+                <Checkbox
+                  id="individual-pdfs"
+                  checked={config.display?.individualPDFs || false}
+                  onCheckedChange={(checked) => updateDisplay('individualPDFs', checked as boolean)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="individual-pdfs" className="font-medium cursor-pointer text-sm">
+                    Generate individual PDFs per inspection
+                  </Label>
+                  <p className="text-xs text-neutral-600 mt-0.5">Create separate PDF file for each inspection</p>
+                </div>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -676,23 +1242,25 @@ function Step2Options({ config, setConfig, getEstimatedPages, getEstimatedFileSi
 
       <div className="h-px bg-neutral-200" />
 
-      <div className="bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <BarChart3 className="w-5 h-5 text-blue-600" />
-          <h4 className="text-sm font-semibold">Live Preview</h4>
-        </div>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="text-sm font-semibold mb-3">Live Preview</h4>
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white rounded p-3 border border-blue-100">
+          <div>
             <p className="text-xs text-neutral-600 mb-1">Estimated Pages</p>
-            <p className="text-lg font-bold text-blue-600">~{getEstimatedPages()}</p>
+            <p className="text-2xl font-bold text-blue-700">
+              ~{getEstimatedPages()}
+            </p>
           </div>
-          <div className="bg-white rounded p-3 border border-green-100">
+          <div>
             <p className="text-xs text-neutral-600 mb-1">File Size</p>
-            <p className="text-lg font-bold text-green-600">{getEstimatedFileSize()}</p>
+            <p className="text-2xl font-bold text-blue-700">
+              {getEstimatedFileSize()}
+            </p>
           </div>
         </div>
-        {config.sections.inspectionPhotos && (
-          <p className="text-xs text-orange-600 mt-2">⚠️ Photos will significantly increase file size</p>
+        {(config.sections.images4PerPage || config.sections.images2PerPage || config.sections.images1PerPage || 
+          config.sections.defectPlotCenterWithImages || config.sections.defectPlotLeftWithImages) && (
+          <p className="text-xs text-orange-600 mt-2">⚠️ Image sections will significantly increase file size</p>
         )}
       </div>
     </div>
@@ -700,7 +1268,7 @@ function Step2Options({ config, setConfig, getEstimatedPages, getEstimatedFileSi
 }
 
 // Step 3 Component
-function Step3Preview({ config }: any) {
+function Step3Preview({ config }: { config: ReportConfig }) {
   const [selectedPage, setSelectedPage] = useState(0);
 
   const pages = [
@@ -803,7 +1371,15 @@ function Step3Preview({ config }: any) {
 }
 
 // Step 4 Generating Component
-function Step4Generating({ progress, currentPage, totalPages }: any) {
+function Step4Generating({ 
+  progress, 
+  currentPage, 
+  totalPages 
+}: { 
+  progress: number; 
+  currentPage: number; 
+  totalPages: number; 
+}) {
   const steps = [
     { label: 'Preparing data', completed: progress > 10 },
     { label: 'Generating cover page', completed: progress > 20 },
@@ -893,7 +1469,13 @@ function Step4Generating({ progress, currentPage, totalPages }: any) {
 }
 
 // Step 4 Success Component
-function Step4Success({ report, onDownload }: any) {
+function Step4Success({ 
+  report, 
+  onDownload 
+}: { 
+  report: { filename: string; pages: number; size: string; duration: number }; 
+  onDownload: () => void; 
+}) {
   return (
     <div className="space-y-6 py-8">
       <div className="text-center">
