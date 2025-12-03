@@ -681,13 +681,18 @@ export default function AssetListPage() {
       });
       
       channel.postMessage({
+        type: 'ASSETS_SELECT',
+        assetIds: selectedRows
+      });
+      
+      channel.postMessage({
         type: 'COLUMNS_UPDATE',
         columns: displayedColumns
       });
       
       return () => channel.close();
     }
-  }, [filteredAssets, displayedColumns, poppedOutSections]);
+  }, [filteredAssets, displayedColumns, poppedOutSections, selectedRows]);
 
   // Listen for messages from pop-out windows
   useEffect(() => {
@@ -697,7 +702,12 @@ export default function AssetListPage() {
     
     channel.onmessage = (event) => {
       if (event.data.type === 'ASSET_SELECT') {
+        // Legacy support: single asset selection
         setSelectedRows([event.data.assetId]);
+      }
+      if (event.data.type === 'ASSETS_SELECT') {
+        // New: multiple asset selection
+        setSelectedRows(event.data.assetIds || []);
       }
       if (event.data.type === 'MAP_POP_IN') {
         setPoppedOutSections(prev => ({ ...prev, map: false }));
@@ -803,13 +813,14 @@ export default function AssetListPage() {
             poppedOutSections.map ? null : (
               <MapPanel
                 assets={filteredAssets}
-                selectedAssetId={selectedRows[0]}
-                onAssetSelect={(id) => {
-                  setSelectedRows([id]);
-                  // Scroll to row in table
-                  if (typeof window !== 'undefined') {
+                selectedAssetIds={selectedRows}
+                filteredAssetIds={filteredAssets.map(a => a.id)}
+                onAssetSelect={(ids) => {
+                  setSelectedRows(ids);
+                  // Scroll to first selected row in table
+                  if (typeof window !== 'undefined' && ids.length > 0) {
                     setTimeout(() => {
-                      const row = document.querySelector(`[data-asset-id="${id}"]`);
+                      const row = document.querySelector(`[data-asset-id="${ids[0]}"]`);
                       if (row) {
                         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         // Flash animation

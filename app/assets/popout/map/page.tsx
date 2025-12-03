@@ -12,7 +12,7 @@ function MapPopoutContent() {
   
   // Sync state with parent window via BroadcastChannel
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -25,19 +25,27 @@ function MapPopoutContent() {
         setAssets(event.data.assets);
       }
       if (event.data.type === 'ASSET_SELECT') {
-        setSelectedAssetId(event.data.assetId);
+        // Support both old (single) and new (array) format
+        if (Array.isArray(event.data.assetIds)) {
+          setSelectedAssetIds(event.data.assetIds);
+        } else if (event.data.assetId) {
+          setSelectedAssetIds([event.data.assetId]);
+        }
+      }
+      if (event.data.type === 'ASSETS_SELECT') {
+        setSelectedAssetIds(event.data.assetIds || []);
       }
     };
 
     return () => channel.close();
   }, []);
 
-  const handleAssetSelect = (id: string) => {
+  const handleAssetSelect = (ids: string[]) => {
     if (typeof window === 'undefined') return;
     
     // Broadcast to main window
     const channel = new BroadcastChannel('asset-list-sync');
-    channel.postMessage({ type: 'ASSET_SELECT', assetId: id });
+    channel.postMessage({ type: 'ASSETS_SELECT', assetIds: ids });
     channel.close();
   };
 
@@ -70,7 +78,8 @@ function MapPopoutContent() {
       <div className="flex-1">
         <MapPanel
           assets={assets}
-          selectedAssetId={selectedAssetId ?? undefined}
+          selectedAssetIds={selectedAssetIds}
+          filteredAssetIds={assets.map(a => a.id)}
           onAssetSelect={handleAssetSelect}
           filters={[]}
         />
