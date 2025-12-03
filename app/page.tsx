@@ -736,7 +736,7 @@ export default function AssetListPage() {
       <div className="shadow-sm">
         <Toolbar
           assets={assets}
-          onFilteredResults={setSimpleSearchResults}
+          onFilteredResults={(assets) => setSimpleSearchResults(assets)}
           onOpenAdvancedSearch={() => setSearchOpen(true)}
           onOpenViewSettings={() => setViewSettingsOpen(true)}
           onOpenFilters={handleOpenFilters}

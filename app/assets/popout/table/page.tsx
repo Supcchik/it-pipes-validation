@@ -43,7 +43,6 @@ function TablePopoutContent() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedAssets = assets.slice(startIndex, endIndex);
-  const totalPages = Math.ceil(assets.length / itemsPerPage);
 
   return (
     <div className="w-full h-screen flex flex-col">
@@ -71,7 +70,6 @@ function TablePopoutContent() {
       <div className="border-t border-neutral-200">
         <Pagination
           currentPage={currentPage}
-          totalPages={totalPages}
           totalItems={assets.length}
           itemsPerPage={itemsPerPage}
           onPageChange={setCurrentPage}

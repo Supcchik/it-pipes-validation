@@ -208,7 +208,7 @@ export default function FindReplaceDialog({
                     </p>
                     {matchedAssets.length > 0 && replaceValue && (
                       <p className="text-xs text-blue-700 mt-1">
-                        "{findValue}" → "{replaceValue}" in {selectedColumn?.label}
+                        &quot;{findValue}&quot; → &quot;{replaceValue}&quot; in {selectedColumn?.label}
                       </p>
                     )}
                   </div>

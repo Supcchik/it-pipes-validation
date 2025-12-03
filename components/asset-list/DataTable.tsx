@@ -259,12 +259,12 @@ export default function DataTable({
     
     // Store handler for external calls
     if (typeof window !== 'undefined') {
-      (window as any).__startEditingSelected = handleExternalEdit;
+      (window as Window & { __startEditingSelected?: () => void }).__startEditingSelected = handleExternalEdit;
     }
     
     return () => {
       if (typeof window !== 'undefined') {
-        delete (window as any).__startEditingSelected;
+        delete (window as Window & { __startEditingSelected?: () => void }).__startEditingSelected;
       }
     };
   }, [selectedRows, data, editingRowId]);

@@ -33,7 +33,7 @@ import SearchBar from './SearchBar';
 
 interface ToolbarProps {
   assets: Asset[]; // НОВИЙ: для SearchBar
-  onFilteredResults: (assets: Asset[]) => void; // НОВИЙ: результат simple search
+  onFilteredResults: (assets: Asset[] | null) => void; // НОВИЙ: результат simple search
   onOpenAdvancedSearch: () => void; // НОВИЙ: відкрити advanced search modal
   onOpenViewSettings: () => void; // Залишено для backward compatibility
   onOpenFilters?: () => void; // НОВИЙ: Відкрити ViewSettings на вкладці Filters

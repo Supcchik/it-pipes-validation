@@ -180,9 +180,9 @@ export default function SearchDialog({
                 setSearchQuery(prev => ({
                   ...prev,
                   field: value,
-                  operator: newOperators.find(op => op.value === prev.operator) 
+                  operator: (newOperators.find(op => op.value === prev.operator) 
                     ? prev.operator 
-                    : newOperators[0]?.value || 'contains'
+                    : newOperators[0]?.value || 'contains') as SearchQuery['operator']
                 }));
               }}
             >

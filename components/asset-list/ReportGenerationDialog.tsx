@@ -481,7 +481,7 @@ function Step1Scope({
         <Label className="text-sm font-semibold">Report Scope</Label>
         <RadioGroup
           value={config.scope}
-          onValueChange={(value) => setConfig({ ...config, scope: value })}
+          onValueChange={(value) => setConfig({ ...config, scope: value as ReportScope })}
         >
           <div className="space-y-3">
             <label
@@ -569,7 +569,7 @@ function Step1Scope({
         <Label className="text-sm font-semibold">Inspection Filter</Label>
         <RadioGroup
           value={config.inspectionFilter}
-          onValueChange={(value) => setConfig({ ...config, inspectionFilter: value })}
+          onValueChange={(value) => setConfig({ ...config, inspectionFilter: value as InspectionFilter })}
         >
           <div className="space-y-3">
             <div className="flex items-start space-x-3">
@@ -727,7 +727,16 @@ function Step2Options({
   getEstimatedFileSize,
   assetCount,
   inspectionCount
-}: any) {
+}: {
+  config: ReportConfig;
+  setConfig: React.Dispatch<React.SetStateAction<ReportConfig>>;
+  selectedPreset: 'custom' | 'standard' | 'compliance' | 'visual' | 'executive';
+  setSelectedPreset: (preset: 'custom' | 'standard' | 'compliance' | 'visual' | 'executive') => void;
+  getEstimatedPages: () => number;
+  getEstimatedFileSize: () => string;
+  assetCount: number;
+  inspectionCount: number;
+}) {
   const toggleSection = (key: string) => {
     setConfig({
       ...config,
@@ -1112,7 +1121,7 @@ function Step2Options({
                   <Label htmlFor="code-code" className="font-medium cursor-pointer text-sm">
                     Code Only
                   </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Show only code values (e.g., "A1")</p>
+                  <p className="text-xs text-neutral-600 mt-0.5">Show only code values (e.g., &quot;A1&quot;)</p>
                 </div>
               </label>
               <label

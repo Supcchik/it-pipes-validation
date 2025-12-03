@@ -53,7 +53,7 @@ export default function FloatingSelectionBar({
     // For now, use inline editing for first selected row as fallback
     // TODO: Create /assets/bulk-edit page for proper bulk editing
     if (selectedAssets.length > 0 && typeof window !== 'undefined') {
-      const handler = (window as any).__startEditingSelected;
+      const handler = (window as Window & { __startEditingSelected?: () => void }).__startEditingSelected;
       if (handler) {
         handler();
       } else {

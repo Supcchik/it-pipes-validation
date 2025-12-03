@@ -53,7 +53,7 @@ function MapPopoutContent() {
       <div className="flex-1">
         <MapPanel
           assets={assets}
-          selectedAssetId={selectedAssetId}
+          selectedAssetId={selectedAssetId ?? undefined}
           onAssetSelect={handleAssetSelect}
           filters={[]}
         />

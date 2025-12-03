@@ -161,7 +161,7 @@ export default function MoveToProjectDialog({
           <div className="space-y-4 py-4">
             <p className="text-sm text-neutral-700">
               You are about to move <strong>{selectedAssets.length} assets</strong> from{' '}
-              <strong>"{currentProject}"</strong> to <strong>"{selectedProject?.name}"</strong>
+              <strong>&quot;{currentProject}&quot;</strong> to <strong>&quot;{selectedProject?.name}&quot;</strong>
             </p>
 
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
