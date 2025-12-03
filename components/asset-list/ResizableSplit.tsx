@@ -119,30 +119,34 @@ export default function ResizableSplit({
       {/* Left Panel */}
       <div
         className="h-full overflow-hidden transition-all duration-200"
-        style={{ width: `${ratio}%` }}
+        style={{ width: rightPanel ? `${ratio}%` : '100%' }}
       >
         {leftPanel}
       </div>
 
-      {/* Divider */}
-      <div
-        className={cn(
-          'relative flex items-center justify-center cursor-col-resize group',
-          'w-1.5 bg-neutral-300 hover:bg-orange-400 transition-colors',
-          isDragging && 'bg-orange-500 w-2'
-        )}
-        onMouseDown={handleMouseDown}
-      >
-        <div className="absolute inset-0" />
-      </div>
+      {/* Divider - only show if rightPanel exists */}
+      {rightPanel && (
+        <div
+          className={cn(
+            'relative flex items-center justify-center cursor-col-resize group',
+            'w-1.5 bg-neutral-300 hover:bg-orange-400 transition-colors',
+            isDragging && 'bg-orange-500 w-2'
+          )}
+          onMouseDown={handleMouseDown}
+        >
+          <div className="absolute inset-0" />
+        </div>
+      )}
 
       {/* Right Panel */}
-      <div
-        className="h-full overflow-hidden transition-all duration-200"
-        style={{ width: `${100 - ratio}%` }}
-      >
-        {rightPanel}
-      </div>
+      {rightPanel && (
+        <div
+          className="h-full overflow-hidden transition-all duration-200"
+          style={{ width: `${100 - ratio}%` }}
+        >
+          {rightPanel}
+        </div>
+      )}
     </div>
   );
 }

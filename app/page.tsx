@@ -420,23 +420,14 @@ export default function AssetListPage() {
   const handlePopOutMap = () => {
     if (typeof window === 'undefined') return;
     
-    const mapWindow = window.open(
+    // Open in new tab instead of popup window
+    window.open(
       `/assets/popout/map?viewId=${activeViewId}`,
-      'Core Vision - Map',
-      'width=800,height=600,left=100,top=100'
+      '_blank'
     );
     
-    if (mapWindow) {
-      setPoppedOutSections(prev => ({ ...prev, map: true }));
-      
-      // Listen for window close
-      const checkClosed = setInterval(() => {
-        if (mapWindow.closed) {
-          setPoppedOutSections(prev => ({ ...prev, map: false }));
-          clearInterval(checkClosed);
-        }
-      }, 500);
-    }
+    // Mark map as popped out
+    setPoppedOutSections(prev => ({ ...prev, map: true }));
   };
 
   const handlePopOutTable = () => {
@@ -708,6 +699,9 @@ export default function AssetListPage() {
       if (event.data.type === 'ASSET_SELECT') {
         setSelectedRows([event.data.assetId]);
       }
+      if (event.data.type === 'MAP_POP_IN') {
+        setPoppedOutSections(prev => ({ ...prev, map: false }));
+      }
       if (event.data.type === 'OPEN_DETAIL') {
         router.push(`/inspection/${event.data.assetId}`);
       }
@@ -806,30 +800,32 @@ export default function AssetListPage() {
             </div>
           }
           rightPanel={
-            <MapPanel
-              assets={filteredAssets}
-              selectedAssetId={selectedRows[0]}
-              onAssetSelect={(id) => {
-                setSelectedRows([id]);
-                // Scroll to row in table
-                if (typeof window !== 'undefined') {
-                  setTimeout(() => {
-                    const row = document.querySelector(`[data-asset-id="${id}"]`);
-                    if (row) {
-                      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                      // Flash animation
-                      row.classList.add('flash-highlight');
-                      setTimeout(() => row.classList.remove('flash-highlight'), 1000);
-                    }
-                  }, 100);
-                }
-              }}
-              onMapClick={() => {
-                // Deselect при кліку на empty map area
-                setSelectedRows([]);
-              }}
-              filters={activeView?.filters || []}
-            />
+            poppedOutSections.map ? null : (
+              <MapPanel
+                assets={filteredAssets}
+                selectedAssetId={selectedRows[0]}
+                onAssetSelect={(id) => {
+                  setSelectedRows([id]);
+                  // Scroll to row in table
+                  if (typeof window !== 'undefined') {
+                    setTimeout(() => {
+                      const row = document.querySelector(`[data-asset-id="${id}"]`);
+                      if (row) {
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // Flash animation
+                        row.classList.add('flash-highlight');
+                        setTimeout(() => row.classList.remove('flash-highlight'), 1000);
+                      }
+                    }, 100);
+                  }
+                }}
+                onMapClick={() => {
+                  // Deselect при кліку на empty map area
+                  setSelectedRows([]);
+                }}
+                filters={activeView?.filters || []}
+              />
+            )
           }
         />
       </div>

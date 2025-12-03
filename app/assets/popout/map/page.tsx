@@ -4,6 +4,9 @@ import { Suspense } from 'react';
 import { useEffect, useState } from 'react';
 import MapPanel from '@/components/asset-list/MapPanel';
 import type { Asset } from '@/lib/types/asset-list';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import CoreVisionLogo from '@/components/CoreVisionLogo';
 
 function MapPopoutContent() {
   
@@ -38,17 +41,31 @@ function MapPopoutContent() {
     channel.close();
   };
 
+  const handlePopIn = () => {
+    if (typeof window === 'undefined') return;
+    
+    // Send pop-in message to main window
+    const channel = new BroadcastChannel('asset-list-sync');
+    channel.postMessage({ type: 'MAP_POP_IN' });
+    channel.close();
+    
+    // Close this tab
+    window.close();
+  };
+
   return (
     <div className="w-full h-screen flex flex-col">
-      <div className="bg-neutral-800 text-white px-4 py-2 flex items-center justify-between">
-        <h1 className="text-sm font-semibold">Core Vision - Map View</h1>
-        <button 
-          onClick={() => window.close()}
-          className="text-neutral-400 hover:text-white text-xl leading-none"
-          aria-label="Close"
+      <div className="bg-white border-b border-neutral-200 px-4 py-3 flex items-center justify-between shadow-sm">
+        <CoreVisionLogo height={28} />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handlePopIn}
+          className="h-8 gap-2"
         >
-          ✕
-        </button>
+          <ArrowLeft className="w-4 h-4" />
+          Return to main view
+        </Button>
       </div>
       <div className="flex-1">
         <MapPanel

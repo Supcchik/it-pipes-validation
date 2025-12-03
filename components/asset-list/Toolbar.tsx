@@ -208,44 +208,25 @@ export default function Toolbar({
 
           {/* Group 4: Pop-out */}
           <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-10 w-10">
-                      <ExternalLink className="h-5 w-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={onPopOutMap}>
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Pop-out Map
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onPopOutTable}>
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Pop-out Table
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => {
-                        if (onPopOutMap && onPopOutTable) {
-                          onPopOutMap();
-                          setTimeout(() => onPopOutTable(), 100);
-                        }
-                      }}
-                      disabled={!onPopOutMap || !onPopOutTable}
-                    >
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Pop-out Both
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Pop-out window</p>
-                <p className="text-xs text-neutral-500">Open in new window</p>
-              </TooltipContent>
-            </Tooltip>
+            {onPopOutMap && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-10 w-10"
+                    onClick={onPopOutMap}
+                    aria-label="Pop-out Map"
+                  >
+                    <ExternalLink className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Pop-out Map</p>
+                  <p className="text-xs text-neutral-500">Open map in new tab</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       </div>
