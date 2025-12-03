@@ -25,7 +25,8 @@ import {
   Copy,
   Printer,
   Filter,
-  Columns
+  Columns,
+  MoveRight
 } from 'lucide-react';
 import type { FilterConfig, Asset } from '@/lib/types/asset-list';
 import SearchBar from './SearchBar';
@@ -41,6 +42,10 @@ interface ToolbarProps {
   onPopOutTable: () => void;
   onFindReplace?: () => void; // НОВИЙ: Find & Replace
   onGenerateReport?: () => void; // НОВИЙ: Generate Report
+  onValidateInspections?: () => void; // НОВИЙ: Validate Inspections
+  onExportProject?: () => void; // НОВИЙ: Export Project
+  onMoveToProject?: () => void; // НОВИЙ: Move to Project
+  onCopyToProject?: () => void; // НОВИЙ: Copy to Project
   filters?: FilterConfig[];
   visibleColumnsCount?: number; // НОВИЙ: Кількість видимих колонок
   onRemoveFilter?: (filterId: string) => void;
@@ -57,6 +62,10 @@ export default function Toolbar({
   onPopOutTable,
   onFindReplace,
   onGenerateReport,
+  onValidateInspections,
+  onExportProject,
+  onMoveToProject,
+  onCopyToProject,
   filters = [],
   visibleColumnsCount
 }: ToolbarProps) {
@@ -164,27 +173,26 @@ export default function Toolbar({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={onValidateInspections} disabled={!onValidateInspections}>
                       <CheckCircle className="mr-2 h-4 w-4" />
-                      Validate Inspection
+                      Validate Inspections
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={onFindReplace} disabled={!onFindReplace}>
                       <FileSearch className="mr-2 h-4 w-4" />
                       Find & Replace
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={onExportProject} disabled={!onExportProject}>
                       <Download className="mr-2 h-4 w-4" />
                       Export Project
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={onMoveToProject} disabled={!onMoveToProject}>
+                      <MoveRight className="mr-2 h-4 w-4" />
+                      Move to Project
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={onCopyToProject} disabled={!onCopyToProject}>
                       <Copy className="mr-2 h-4 w-4" />
                       Copy to Project
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>
-                      <Printer className="mr-2 h-4 w-4" />
-                      Print
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

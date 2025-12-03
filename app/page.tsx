@@ -17,6 +17,15 @@ import ManageViewsDialog from '@/components/asset-list/ManageViewsDialog';
 import ActiveFiltersBar from '@/components/asset-list/ActiveFiltersBar';
 import CreateViewDialog from '@/components/asset-list/CreateViewDialog';
 import FloatingSelectionBar from '@/components/asset-list/FloatingSelectionBar';
+import ValidationDialog, { type ValidationOptions } from '@/components/asset-list/ValidationDialog';
+import ValidationProgressDialog from '@/components/asset-list/ValidationProgressDialog';
+import ValidationResultsDialog, { type ValidationResults } from '@/components/asset-list/ValidationResultsDialog';
+import ValidationErrorsView, { type ValidationError } from '@/components/asset-list/ValidationErrorsView';
+import BulkFixDialog, { type BulkFix } from '@/components/asset-list/BulkFixDialog';
+import ExportProjectDialog from '@/components/asset-list/ExportProjectDialog';
+import MoveToProjectDialog from '@/components/asset-list/MoveToProjectDialog';
+import CopyToProjectDialog from '@/components/asset-list/CopyToProjectDialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
 import type { View, Asset, ColumnDef } from '@/lib/types/asset-list';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
@@ -62,6 +71,22 @@ export default function AssetListPage() {
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [manageViewsOpen, setManageViewsOpen] = useState(false);
   const [createViewOpen, setCreateViewOpen] = useState(false);
+  
+  // Validation dialog states
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false);
+  const [validationProgressOpen, setValidationProgressOpen] = useState(false);
+  const [validationJobId, setValidationJobId] = useState<string | null>(null);
+  const [validationResultsOpen, setValidationResultsOpen] = useState(false);
+  const [validationResults, setValidationResults] = useState<ValidationResults | null>(null);
+  const [validationErrorsOpen, setValidationErrorsOpen] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [bulkFixDialogOpen, setBulkFixDialogOpen] = useState(false);
+  const [selectedErrorsForBulkFix, setSelectedErrorsForBulkFix] = useState<ValidationError[]>([]);
+  
+  // Export & Transfer dialog states
+  const [exportProjectDialogOpen, setExportProjectDialogOpen] = useState(false);
+  const [moveToProjectDialogOpen, setMoveToProjectDialogOpen] = useState(false);
+  const [copyToProjectDialogOpen, setCopyToProjectDialogOpen] = useState(false);
 
   // Get active view with safe fallback
   const activeView = useMemo(() => {
@@ -481,6 +506,99 @@ export default function AssetListPage() {
     }
   };
 
+  // Validation handlers
+  const handleStartValidation = async (options: ValidationOptions) => {
+    setValidationDialogOpen(false);
+    
+    // Determine asset IDs based on scope
+    const assetIds = options.scope === 'all'
+      ? filteredAssets.map(a => a.id)
+      : selectedRows;
+    
+    if (assetIds.length === 0) {
+      alert('No assets selected for validation');
+      return;
+    }
+    
+    // Generate job ID
+    const jobId = `validation-${Date.now()}`;
+    setValidationJobId(jobId);
+    setValidationProgressOpen(true);
+    
+    // TODO: Replace with actual API call
+    // const response = await fetch('/api/validate', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({
+    //     assetIds,
+    //     rules: options.rules
+    //   })
+    // });
+    // const { jobId } = await response.json();
+    
+    // Simulate validation process
+    setTimeout(() => {
+      // Mock results
+      const mockResults: ValidationResults = {
+        total: assetIds.length,
+        passed: Math.floor(assetIds.length * 0.58),
+        failed: Math.floor(assetIds.length * 0.42),
+        summary: {
+          'missing "Surveyed By"': 156,
+          'missing "Certificate Number"': 98,
+          'missing access points': 67,
+          'with invalid dates': 45,
+          'with invalid PACP codes': 23
+        }
+      };
+      
+      // Mock errors
+      const mockErrors: ValidationError[] = assetIds.slice(0, 10).map((id, idx) => ({
+        assetId: id,
+        assetName: `ML-${String(idx + 1).padStart(3, '0')}`,
+        inspectionId: String(1000 + idx),
+        inspectionDate: new Date().toLocaleDateString(),
+        errors: [
+          { type: 'missing', field: 'surveyedBy', message: 'Missing: Surveyed By', fixable: true },
+          { type: 'missing', field: 'certificateNumber', message: 'Missing: Certificate Number', fixable: true },
+          { type: 'missing', field: 'accessPoints', message: 'Access points: Need 2, found 0', fixable: false }
+        ]
+      }));
+      
+      setValidationProgressOpen(false);
+      setValidationResults(mockResults);
+      setValidationErrors(mockErrors);
+      setValidationResultsOpen(true);
+    }, 3000); // Simulate 3 second validation
+  };
+  
+  const handleViewValidationErrors = () => {
+    setValidationResultsOpen(false);
+    setValidationErrorsOpen(true);
+  };
+  
+  const handleDownloadValidationReport = () => {
+    // TODO: Implement report download
+    console.log('Downloading validation report...');
+  };
+  
+  const handleExportValidationErrors = () => {
+    // TODO: Implement CSV export
+    console.log('Exporting validation errors to CSV...');
+  };
+  
+  const handleBulkFix = (selectedErrors: ValidationError[]) => {
+    setSelectedErrorsForBulkFix(selectedErrors);
+    setBulkFixDialogOpen(true);
+  };
+  
+  const handleApplyBulkFixes = async (fixes: BulkFix[]) => {
+    // TODO: Implement bulk fix API call
+    console.log('Applying bulk fixes:', fixes);
+    setBulkFixDialogOpen(false);
+    // Refresh validation results after fixes
+  };
+
   // Handler для Find & Replace
   const handleFindReplace = (operation: ReplaceOperation) => {
     const updatedAssets = assets.map(asset => {
@@ -627,6 +745,10 @@ export default function AssetListPage() {
           onPopOutTable={handlePopOutTable}
           onFindReplace={() => setFindReplaceOpen(true)}
           onGenerateReport={() => setReportDialogOpen(true)}
+          onValidateInspections={() => setValidationDialogOpen(true)}
+          onExportProject={() => setExportProjectDialogOpen(true)}
+          onMoveToProject={() => setMoveToProjectDialogOpen(true)}
+          onCopyToProject={() => setCopyToProjectDialogOpen(true)}
           visibleColumnsCount={displayedColumns?.length || 0}
           filters={activeView?.filters || []}
         />
@@ -840,6 +962,89 @@ export default function AssetListPage() {
         onCreateNewView={() => {
           setManageViewsOpen(false); // Закрити Manage Views dialog
           setCreateViewOpen(true); // Відкрити Create View dialog
+        }}
+      />
+
+      {/* Validation Dialogs */}
+      <ValidationDialog
+        open={validationDialogOpen}
+        onClose={() => setValidationDialogOpen(false)}
+        totalAssets={filteredAssets.length}
+        selectedAssets={selectedRows.length}
+        onStartValidation={handleStartValidation}
+      />
+
+      <ValidationProgressDialog
+        open={validationProgressOpen}
+        onCancel={() => {
+          setValidationProgressOpen(false);
+          setValidationJobId(null);
+        }}
+        jobId={validationJobId || ''}
+      />
+
+      {validationResults && (
+        <ValidationResultsDialog
+          open={validationResultsOpen}
+          onClose={() => setValidationResultsOpen(false)}
+          results={validationResults}
+          onViewErrors={handleViewValidationErrors}
+          onDownloadReport={handleDownloadValidationReport}
+        />
+      )}
+
+      {validationErrors.length > 0 && (
+        <Dialog open={validationErrorsOpen} onOpenChange={setValidationErrorsOpen}>
+          <DialogContent className="sm:max-w-4xl h-[80vh] flex flex-col p-0">
+            <ValidationErrorsView
+              errors={validationErrors}
+              onBulkFix={handleBulkFix}
+              onExport={handleExportValidationErrors}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      <BulkFixDialog
+        open={bulkFixDialogOpen}
+        onClose={() => {
+          setBulkFixDialogOpen(false);
+          setSelectedErrorsForBulkFix([]);
+        }}
+        errors={selectedErrorsForBulkFix}
+        onApplyFixes={handleApplyBulkFixes}
+      />
+
+      {/* Export & Transfer Dialogs */}
+      <ExportProjectDialog
+        open={exportProjectDialogOpen}
+        onClose={() => setExportProjectDialogOpen(false)}
+        totalAssets={assets.length}
+        filteredAssets={filteredAssets.length}
+        selectedAssets={selectedRows.length}
+      />
+
+      <MoveToProjectDialog
+        open={moveToProjectDialogOpen}
+        onClose={() => setMoveToProjectDialogOpen(false)}
+        selectedAssets={filteredAssets.filter(a => selectedRows.includes(a.id))}
+        currentProject={activeView?.name || 'Current Project'}
+        onMoveComplete={() => {
+          // Remove moved assets from current view
+          setAssets(prev => 
+            prev.filter(asset => !selectedRows.includes(asset.id))
+          );
+          setSelectedRows([]);
+        }}
+      />
+
+      <CopyToProjectDialog
+        open={copyToProjectDialogOpen}
+        onClose={() => setCopyToProjectDialogOpen(false)}
+        selectedAssets={filteredAssets.filter(a => selectedRows.includes(a.id))}
+        onCopyComplete={() => {
+          // Optional: clear selection or refresh
+          // Assets remain in current project
         }}
       />
 
