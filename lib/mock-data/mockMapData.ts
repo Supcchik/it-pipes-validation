@@ -64,7 +64,20 @@ export const MOCK_PIPE_SEGMENTS: PipeSegment[] = Array.from({ length: 30 }, (_, 
   const upstreamMH = MOCK_MANHOLES[i];
   const downstreamMH = MOCK_MANHOLES[i + 1];
   
-  if (!upstreamMH || !downstreamMH) return null as any;
+  if (!upstreamMH || !downstreamMH) {
+    // Return a placeholder pipe segment if manholes are missing
+    return {
+      id: `pipe-${i + 1}`,
+      name: `MH-${100 + i}_MH-${101 + i}`,
+      upstreamManholeId: `mh-${100 + i}`,
+      downstreamManholeId: `mh-${101 + i}`,
+      coordinates: [],
+      material: 'Unknown',
+      diameter: 0,
+      length: 0,
+      assetId: `asset-${i + 1}`,
+    };
+  }
   
   // Create curved path between manholes (3 points for smooth curve)
   const midLat = (upstreamMH.coordinates.lat + downstreamMH.coordinates.lat) / 2;

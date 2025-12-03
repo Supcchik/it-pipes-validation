@@ -173,7 +173,8 @@ export default function MapPanel({
     const y = ((center.lat - lat) * 10000 * zoom) + (height / 2) + panOffset.y;
     
     return { x, y };
-  }, [zoom, center, panOffset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center, zoom, panOffset]);
 
   // Draw map
   const drawMap = useCallback(() => {
@@ -241,11 +242,12 @@ export default function MapPanel({
         const { x, y } = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
         const style = isSelected ? MANHOLE_STYLES.selected : isHovered ? MANHOLE_STYLES.hover : MANHOLE_STYLES.default;
         const radius = style.radius;
+        const opacity = 'opacity' in style ? (style.opacity as number) : 1;
 
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, 2 * Math.PI);
         ctx.fillStyle = style.fill;
-        ctx.globalAlpha = style.opacity || 1;
+        ctx.globalAlpha = opacity;
         ctx.fill();
         ctx.strokeStyle = style.stroke;
         ctx.lineWidth = style.strokeWidth;
@@ -335,7 +337,7 @@ export default function MapPanel({
     setHoveredItem(hoveredFeature);
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e?: React.MouseEvent<HTMLCanvasElement>) => {
     if (isPanning) {
       setIsPanning(false);
       setPanStart(null);
@@ -350,11 +352,18 @@ export default function MapPanel({
       });
       
       setPanOffset({ x: 0, y: 0 });
+      return;
     }
 
     // Complete box selection
     if (selectionTool === 'box' && selectionStart && selectionEnd) {
       completeBoxSelection();
+      return;
+    }
+
+    // If clicked on empty space (not panning, not selecting), call onMapClick
+    if (e && !clickedItem) {
+      onMapClick?.();
     }
   };
 
