@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MoreVertical, Eye, Edit, Copy, Trash2, ArrowUpDown, GripVertical, Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Asset, ColumnDef } from '@/lib/types/asset-list';
@@ -124,6 +126,8 @@ interface DataTableProps {
   onColumnReorder?: (newOrder: string[]) => void;
   onUpdateAsset?: (assetId: string, updates: Partial<Asset>) => void; // НОВИЙ: для inline editing
   onStartEditing?: (assetId: string) => void; // НОВИЙ: для bulk edit з FloatingSelectionBar
+  onDuplicate?: (asset: Asset) => void; // НОВИЙ: для duplicate action
+  onDelete?: (asset: Asset) => void; // НОВИЙ: для delete action
   loading?: boolean;
 }
 
@@ -137,11 +141,14 @@ export default function DataTable({
   onColumnReorder,
   onUpdateAsset,
   onStartEditing,
+  onDuplicate,
+  onDelete,
   loading = false
 }: DataTableProps) {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null); // null = full row edit, string = single field edit
   const [editingValues, setEditingValues] = useState<Partial<Asset>>({});
   const [savingField, setSavingField] = useState<string | null>(null);
   const [savedField, setSavedField] = useState<string | null>(null);
@@ -224,23 +231,107 @@ export default function DataTable({
   };
 
   // Get cell value based on column field
-  const getCellValue = (asset: Asset, column: ColumnDef): string | number => {
+  const getCellValue = (asset: Asset, column: ColumnDef): string | number | boolean => {
     if (column.table === 'asset') {
-      return (asset as unknown as Record<string, unknown>)[column.field] as string | number ?? '';
+      const value = (asset as unknown as Record<string, unknown>)[column.field];
+      if (value === null || value === undefined) return '';
+      return value as string | number | boolean;
     } else if (column.table === 'inspection' && asset.latestInspection) {
-      return (asset.latestInspection as unknown as Record<string, unknown>)[column.field] as string | number ?? '';
+      const value = (asset.latestInspection as unknown as Record<string, unknown>)[column.field];
+      if (value === null || value === undefined) return '';
+      return value as string | number | boolean;
     } else if (column.table === 'observation') {
       if (column.field === 'observationCount') return asset.observationCount;
-      if (column.field === 'hasDefects') return asset.hasDefects ? 'Yes' : 'No';
+      if (column.field === 'hasDefects') return asset.hasDefects;
       if (column.field === 'maxGrade') return asset.maxGrade ?? '';
     }
     return '';
   };
 
+  // Get current editing value for a field
+  const getEditingValue = (column: ColumnDef): unknown => {
+    if (editingField === null) {
+      // Full row edit - get from editingValues
+      return editingValues[column.field as keyof Asset];
+    } else {
+      // Single field edit
+      return editingValues[column.field as keyof Asset];
+    }
+  };
+
+  // Get options for select fields (simple mock options)
+  const getSelectOptions = (field: string, table: string): string[] => {
+    // Mock options based on field name
+    if (field === 'material') {
+      return ['PVC', 'Concrete', 'Clay', 'HDPE', 'Ductile Iron', 'Other'];
+    }
+    if (field === 'preCleaning') {
+      return ['Yes', 'No'];
+    }
+    if (field === 'direction') {
+      return ['Upstream', 'Downstream', 'Both'];
+    }
+    if (field === 'weather') {
+      return ['Clear', 'Cloudy', 'Rain', 'Snow'];
+    }
+    if (field === 'hasDefects') {
+      return ['Yes', 'No'];
+    }
+    return [];
+  };
+
   // Inline editing handlers
+  // Full row edit mode (from Edit menu)
   const startEditing = (asset: Asset) => {
+    // If another row is in edit mode, cancel it first
+    if (editingRowId && editingRowId !== asset.id) {
+      cancelEditing();
+    }
     setEditingRowId(asset.id);
-    setEditingValues({ ...asset });
+    setEditingField(null); // null = full row edit
+    
+    // Collect all editable values from asset
+    const allValues: Partial<Asset> = { ...asset };
+    if (asset.latestInspection) {
+      // Add inspection fields to editing values
+      Object.keys(asset.latestInspection).forEach(key => {
+        (allValues as unknown as Record<string, unknown>)[key] = 
+          (asset.latestInspection as unknown as Record<string, unknown>)[key];
+      });
+    }
+    // Add observation fields
+    allValues.observationCount = asset.observationCount;
+    allValues.hasDefects = asset.hasDefects;
+    allValues.maxGrade = asset.maxGrade;
+    
+    setEditingValues(allValues);
+  };
+
+  // Single field edit mode (from clicking on field)
+  const startFieldEdit = (asset: Asset, column: ColumnDef) => {
+    // If another row is in edit mode, cancel it first
+    if (editingRowId && editingRowId !== asset.id) {
+      cancelEditing();
+    }
+    setEditingRowId(asset.id);
+    setEditingField(column.field); // specific field
+    
+    // Get current value based on table type
+    let currentValue: unknown;
+    if (column.table === 'asset') {
+      currentValue = (asset as unknown as Record<string, unknown>)[column.field];
+    } else if (column.table === 'inspection' && asset.latestInspection) {
+      currentValue = (asset.latestInspection as unknown as Record<string, unknown>)[column.field];
+    } else if (column.table === 'observation') {
+      if (column.field === 'observationCount') currentValue = asset.observationCount;
+      else if (column.field === 'hasDefects') currentValue = asset.hasDefects;
+      else if (column.field === 'maxGrade') currentValue = asset.maxGrade;
+      else currentValue = '';
+    } else {
+      currentValue = '';
+    }
+    
+    setEditingValues({ [column.field]: currentValue });
   };
 
   // Expose startEditing for external calls (bulk edit from FloatingSelectionBar)
@@ -275,22 +366,86 @@ export default function DataTable({
 
   const cancelEditing = () => {
     setEditingRowId(null);
+    setEditingField(null);
     setEditingValues({});
     setSavingField(null);
     setSavedField(null);
     setErrorField(null);
   };
 
-  // Auto-save handler for single field
-  const handleSaveCell = async (field: string, value: unknown) => {
+  // Save all changes in edit mode
+  const handleSaveAll = async () => {
     if (!editingRowId || !onUpdateAsset) return;
+
+    // If single field edit, save that field and exit
+    if (editingField !== null) {
+      const value = editingValues[editingField as keyof Asset];
+      const success = await handleSaveCell(editingField, value);
+      // handleSaveCell already exits edit mode for single field edit
+      return;
+    }
+
+    // Full row edit: save all modified fields
+    try {
+      // Validate all fields
+      const hasErrors = Object.keys(editingValues).some(field => {
+        const value = editingValues[field as keyof Asset];
+        return !validateField(field, value);
+      });
+
+      if (hasErrors) {
+        // Show error, don't save
+        setErrorField('multiple');
+        setTimeout(() => setErrorField(null), 3000);
+        return;
+      }
+
+      // Show saving indicator
+      setSavingField('all');
+
+      // Save all fields
+      const result = onUpdateAsset(editingRowId, editingValues);
+      if (result instanceof Promise) {
+        await result;
+      }
+      
+      // Clear saving indicator
+      setSavingField(null);
+      
+      // Exit edit mode
+      cancelEditing();
+      
+      // Show success indicator
+      setSavedField('all');
+      setTimeout(() => setSavedField(null), 500);
+      
+      // Show success toast
+      toast.success('Збережено', {
+        description: 'Всі зміни успішно збережено',
+      });
+    } catch (error) {
+      console.error('Save failed:', error);
+      setSavingField(null);
+      setErrorField('multiple');
+      setTimeout(() => setErrorField(null), 3000);
+      
+      // Show error toast
+      toast.error('Помилка збереження', {
+        description: 'Не вдалося зберегти зміни',
+      });
+    }
+  };
+
+  // Auto-save handler for single field
+  const handleSaveCell = async (field: string, value: unknown): Promise<boolean> => {
+    if (!editingRowId || !onUpdateAsset) return false;
 
     // Validate field (basic validation)
     const isValid = validateField(field, value);
     if (!isValid) {
       setErrorField(field);
       setTimeout(() => setErrorField(null), 3000);
-      return;
+      return false;
     }
 
     // Clear previous states
@@ -317,15 +472,36 @@ export default function DataTable({
       setTimeout(() => {
         setSavedField(null);
         // Exit edit mode after successful save
-        setEditingRowId(null);
-        setEditingValues({});
+        // If single field edit, exit completely. If full row edit, stay in edit mode
+        if (editingField === field) {
+          // Single field edit: exit completely
+          setEditingRowId(null);
+          setEditingField(null);
+          setEditingValues({});
+        }
+        // Full row edit: stay in edit mode, just clear the saved indicator
       }, 500);
+      
+      // Show success toast
+      toast.success('Збережено', {
+        description: 'Зміни успішно збережено',
+      });
+      
+      // Return success status
+      return true;
     } catch (error) {
       // Rollback on error
       setSavingField(null);
       setErrorField(field);
       setTimeout(() => setErrorField(null), 3000);
       console.error('Save failed:', error);
+      
+      // Show error toast
+      toast.error('Помилка збереження', {
+        description: 'Не вдалося зберегти зміни',
+      });
+      
+      return false;
     }
   };
 
@@ -350,7 +526,9 @@ export default function DataTable({
     if (
       target.closest('button') ||
       target.closest('input') ||
+      target.closest('select') ||
       target.closest('[role="checkbox"]') ||
+      target.closest('span[class*="cursor-pointer"]') || // Ignore clicks on editable text
       editingRowId === asset.id // Don't navigate when editing
     ) {
       return;
@@ -381,18 +559,24 @@ export default function DataTable({
   };
 
   const handleEdit = (asset: Asset) => {
-    // TODO: Open edit dialog
-    console.log('Edit asset:', asset.id);
+    // Start full row edit mode
+    startEditing(asset);
   };
 
   const handleDuplicate = (asset: Asset) => {
-    // TODO: Duplicate asset
-    console.log('Duplicate asset:', asset.id);
+    if (onDuplicate) {
+      onDuplicate(asset);
+    } else {
+      console.log('Duplicate asset:', asset.id);
+    }
   };
 
   const handleDelete = (asset: Asset) => {
-    // TODO: Show delete confirmation
-    console.log('Delete asset:', asset.id);
+    if (onDelete) {
+      onDelete(asset);
+    } else {
+      console.log('Delete asset:', asset.id);
+    }
   };
 
   const allSelected = data.length > 0 && selectedRows.length === data.length;
@@ -444,6 +628,7 @@ export default function DataTable({
           {data.length > 0 ? data.map((asset, index) => {
             const isSelected = selectedRows.includes(asset.id);
             const isEditing = editingRowId === asset.id;
+            const isFullRowEdit = isEditing && editingField === null;
             return (
               <TableRow
                 key={asset.id}
@@ -453,12 +638,14 @@ export default function DataTable({
                 aria-label={`Asset ${asset.pipeSegment || asset.id}`}
                 className={cn(
                   'h-14 transition-colors',
-                  isEditing 
-                    ? 'bg-blue-50 border-blue-300 border-2' 
+                  isFullRowEdit 
+                    ? 'bg-yellow-50 border-yellow-300 border-2' 
+                    : isEditing
+                    ? 'bg-blue-50' // Single field edit - subtle background
                     : 'cursor-pointer',
                   !isEditing && index % 2 === 0 ? 'bg-white' : !isEditing ? 'bg-neutral-50' : '',
-                  !isEditing && isSelected && 'bg-orange-50',
-                  !isEditing && 'hover:bg-neutral-100',
+                  !isEditing && isSelected && 'bg-gray-100',
+                  !isEditing && 'hover:bg-gray-50',
                   isSelected && 'focus:outline-2 focus:outline-orange-500 focus:outline-offset-2'
                 )}
                 onClick={(e) => !isEditing && handleRowClick(asset, e)}
@@ -489,45 +676,200 @@ export default function DataTable({
 
                 {/* Data cells */}
                 {columns.map((column) => {
-                  const isEditable = column.field !== 'id' && 
-                                   column.field !== 'pipeSegment' &&
-                                   column.type !== 'date' &&
-                                   column.table === 'asset'; // Only allow editing asset fields for now
+                  // All fields are editable except id
+                  const isEditable = column.field !== 'id';
 
+                  const isEditingThisField = editingRowId === asset.id && 
+                                            (editingField === null || editingField === column.field);
                   const isSaving = savingField === column.field;
                   const isSaved = savedField === column.field;
                   const hasError = errorField === column.field;
 
+                  // Handle click on editable field text only
+                  const handleFieldClick = (e: React.MouseEvent) => {
+                    if (isEditable && !isEditingThisField) {
+                      e.stopPropagation();
+                      startFieldEdit(asset, column);
+                    }
+                  };
+
                   return (
-                    <TableCell key={column.id} className="px-4 py-3 text-sm" onClick={(e) => isEditing && e.stopPropagation()}>
-                      {isEditing && isEditable ? (
-                        // Edit mode input with auto-save
+                    <TableCell 
+                      key={column.id} 
+                      className="px-4 py-3 text-sm"
+                    >
+                      {isEditingThisField && isEditable ? (
+                        // Edit mode input with auto-save - different input types based on column type
                         <div className="relative flex items-center gap-2">
-                          <Input
-                            value={String(editingValues[column.field as keyof Asset] || '')}
-                            onChange={(e) => updateField(column.field, e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleSaveCell(column.field, editingValues[column.field as keyof Asset]);
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault();
-                                cancelEditing();
-                              }
-                            }}
-                            onBlur={() => {
-                              // Auto-save on blur
-                              handleSaveCell(column.field, editingValues[column.field as keyof Asset]);
-                            }}
-                            className={cn(
-                              "h-8 text-sm",
-                              hasError && "border-red-500 focus:border-red-500 focus:ring-red-500",
-                              !hasError && "border-blue-500 focus:border-blue-500 focus:ring-blue-500"
-                            )}
-                            autoFocus={columns.indexOf(column) === 1} // Focus first editable field
-                            onClick={(e) => e.stopPropagation()}
-                            disabled={isSaving}
-                          />
+                          {column.type === 'select' ? (
+                            // Select dropdown
+                            <Select
+                              value={(() => {
+                                const val = getEditingValue(column);
+                                if (typeof val === 'boolean') {
+                                  return val ? 'Yes' : 'No';
+                                }
+                                return String(val || '');
+                              })()}
+                              onValueChange={(value) => {
+                                // Convert string to boolean if needed
+                                let convertedValue: unknown = value;
+                                if (column.field === 'hasDefects' || column.field === 'preCleaning') {
+                                  convertedValue = value === 'Yes' || value === 'true';
+                                }
+                                updateField(column.field, convertedValue);
+                                // Auto-save on change for select
+                                setTimeout(() => {
+                                  handleSaveCell(column.field, convertedValue);
+                                }, 100);
+                              }}
+                            >
+                              <SelectTrigger 
+                                className={cn(
+                                  "h-8 text-sm w-full",
+                                  hasError && "border-red-500 focus:border-red-500 focus:ring-red-500",
+                                  !hasError && "border-blue-500 focus:border-blue-500 focus:ring-blue-500"
+                                )}
+                                onClick={(e) => e.stopPropagation()}
+                                disabled={isSaving}
+                              >
+                                <SelectValue placeholder="Select..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getSelectOptions(column.field, column.table).map(option => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : column.type === 'date' ? (
+                            // Date input
+                            <Input
+                              type="date"
+                              value={(() => {
+                                const val = getEditingValue(column);
+                                if (!val) return '';
+                                // Convert to YYYY-MM-DD format
+                                if (typeof val === 'string') {
+                                  return val.split('T')[0]; // Remove time if present
+                                }
+                                return '';
+                              })()}
+                              onChange={(e) => updateField(column.field, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveCell(column.field, getEditingValue(column));
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  cancelEditing();
+                                }
+                              }}
+                              onBlur={() => {
+                                if (editingField === column.field) {
+                                  handleSaveCell(column.field, getEditingValue(column));
+                                }
+                              }}
+                              className={cn(
+                                "h-8 text-sm",
+                                hasError && "border-red-500 focus:border-red-500 focus:ring-red-500",
+                                !hasError && "border-blue-500 focus:border-blue-500 focus:ring-blue-500"
+                              )}
+                              autoFocus={true}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={isSaving}
+                              data-field={column.field}
+                            />
+                          ) : column.type === 'number' ? (
+                            // Number input
+                            <Input
+                              type="number"
+                              value={getEditingValue(column) || ''}
+                              onChange={(e) => {
+                                const numValue = e.target.value === '' ? null : Number(e.target.value);
+                                updateField(column.field, numValue);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveCell(column.field, getEditingValue(column));
+                                  // In full row edit mode, move to next field
+                                  if (editingField === null) {
+                                    const currentIndex = columns.findIndex(col => col.id === column.id);
+                                    const nextEditable = columns.slice(currentIndex + 1).find(col => col.field !== 'id');
+                                    if (nextEditable) {
+                                      setTimeout(() => {
+                                        const nextInput = document.querySelector(`[data-field="${nextEditable.field}"]`) as HTMLInputElement;
+                                        nextInput?.focus();
+                                      }, 100);
+                                    }
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  cancelEditing();
+                                } else if (e.key === 'Tab' && editingField === null) {
+                                  e.preventDefault();
+                                  handleSaveCell(column.field, getEditingValue(column));
+                                }
+                              }}
+                              data-field={column.field}
+                              className={cn(
+                                "h-8 text-sm",
+                                hasError && "border-red-500 focus:border-red-500 focus:ring-red-500",
+                                !hasError && "border-blue-500 focus:border-blue-500 focus:ring-blue-500"
+                              )}
+                              autoFocus={true}
+                              onFocus={(e) => e.target.select()}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={isSaving}
+                            />
+                          ) : (
+                            // Text input (default)
+                            <Input
+                              type="text"
+                              value={String(getEditingValue(column) || '')}
+                              onChange={(e) => updateField(column.field, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveCell(column.field, getEditingValue(column));
+                                  // In full row edit mode, move to next field
+                                  if (editingField === null) {
+                                    const currentIndex = columns.findIndex(col => col.id === column.id);
+                                    const nextEditable = columns.slice(currentIndex + 1).find(col => col.field !== 'id');
+                                    if (nextEditable) {
+                                      setTimeout(() => {
+                                        const nextInput = document.querySelector(`[data-field="${nextEditable.field}"]`) as HTMLInputElement;
+                                        nextInput?.focus();
+                                      }, 100);
+                                    }
+                                  }
+                                } else if (e.key === 'Escape') {
+                                  e.preventDefault();
+                                  cancelEditing();
+                                } else if (e.key === 'Tab' && editingField === null) {
+                                  e.preventDefault();
+                                  handleSaveCell(column.field, getEditingValue(column));
+                                }
+                              }}
+                              data-field={column.field}
+                              onBlur={() => {
+                                if (editingField === column.field) {
+                                  handleSaveCell(column.field, getEditingValue(column));
+                                }
+                              }}
+                              className={cn(
+                                "h-8 text-sm",
+                                hasError && "border-red-500 focus:border-red-500 focus:ring-red-500",
+                                !hasError && "border-blue-500 focus:border-blue-500 focus:ring-blue-500"
+                              )}
+                              autoFocus={true}
+                              onFocus={(e) => e.target.select()}
+                              onClick={(e) => e.stopPropagation()}
+                              disabled={isSaving}
+                            />
+                          )}
                           {/* Visual feedback indicators */}
                           {isSaving && (
                             <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
@@ -540,8 +882,23 @@ export default function DataTable({
                           )}
                         </div>
                       ) : (
-                        // Display mode
-                        <span>{getCellValue(asset, column)}</span>
+                        // Display mode - clickable text only
+                        <span
+                          className={cn(
+                            "inline-block",
+                            isEditable && !isEditingThisField && "cursor-pointer hover:bg-blue-50 hover:underline px-1 py-0.5 rounded transition-colors"
+                          )}
+                          onClick={isEditable && !isEditingThisField ? handleFieldClick : undefined}
+                          title={isEditable && !isEditingThisField ? "Click to edit" : undefined}
+                        >
+                          {(() => {
+                            const value = getCellValue(asset, column);
+                            if (typeof value === 'boolean') {
+                              return value ? 'Yes' : 'No';
+                            }
+                            return value;
+                          })()}
+                        </span>
                       )}
                     </TableCell>
                   );
@@ -555,6 +912,8 @@ export default function DataTable({
                   onEdit={onUpdateAsset ? () => startEditing(asset) : handleEdit}
                   onDuplicate={handleDuplicate}
                   onDelete={handleDelete}
+                  onSave={isEditing && onUpdateAsset ? handleSaveAll : undefined}
+                  onCancel={isEditing ? cancelEditing : undefined}
                 />
               </TableRow>
             );

@@ -26,6 +26,7 @@ import BulkFixDialog, { type BulkFix } from '@/components/asset-list/BulkFixDial
 import ExportProjectDialog from '@/components/asset-list/ExportProjectDialog';
 import MoveToProjectDialog from '@/components/asset-list/MoveToProjectDialog';
 import CopyToProjectDialog from '@/components/asset-list/CopyToProjectDialog';
+import DeleteConfirmDialog from '@/components/asset-list/DeleteConfirmDialog';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
 import type { View, Asset, ColumnDef, FilterConfig } from '@/lib/types/asset-list';
@@ -90,6 +91,10 @@ export default function AssetListPage() {
   const [exportProjectDialogOpen, setExportProjectDialogOpen] = useState(false);
   const [moveToProjectDialogOpen, setMoveToProjectDialogOpen] = useState(false);
   const [copyToProjectDialogOpen, setCopyToProjectDialogOpen] = useState(false);
+  
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
 
   // Get active view with safe fallback
   const activeView = useMemo(() => {
@@ -318,18 +323,16 @@ export default function AssetListPage() {
 
   // Handlers
   const handleRowClick = (asset: Asset) => {
-    // Single-select: show snapshots panel and navigate map
-    // Multi-select: navigate to inspection page
+    // Single-click on row: single-select behavior
+    // If already selected, keep it selected (snapshots already shown via useEffect)
     if (selectedRows.length === 1 && selectedRows[0] === asset.id) {
-      // Already selected, show snapshots panel
-      const selectedAsset = filteredAssets.find(a => a.id === asset.id);
-      if (selectedAsset) {
-        setSelectedAssetForSnapshots(selectedAsset);
-      }
-    } else {
-      // Navigate to inspection page
-      router.push(`/inspection/${asset.id}`);
+      // Already selected, do nothing (snapshots panel already visible)
+      return;
     }
+    
+    // Select this row (single-select)
+    setSelectedRows([asset.id]);
+    // Snapshots panel will appear automatically via useEffect below
   };
 
   // Handle selection changes
@@ -345,6 +348,62 @@ export default function AssetListPage() {
       setSelectedAssetForSnapshots(null);
     }
   }, [selectedRows, filteredAssets]);
+
+  // Handle Duplicate
+  const handleDuplicate = (asset: Asset) => {
+    // Create a copy of the asset with new ID
+    const duplicatedAsset: Asset = {
+      ...asset,
+      id: `${asset.id}-copy-${Date.now()}`,
+      pipeSegment: `${asset.pipeSegment} (Copy)`,
+    };
+    
+    // Add to assets list
+    setAssets(prev => [...prev, duplicatedAsset]);
+    
+    // Select the new asset
+    setSelectedRows([duplicatedAsset.id]);
+    
+    // Scroll to the new asset (will happen after render)
+    setTimeout(() => {
+      const row = document.querySelector(`[data-asset-id="${duplicatedAsset.id}"]`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Flash highlight
+        row.classList.add('flash-highlight');
+        setTimeout(() => row.classList.remove('flash-highlight'), 1000);
+      }
+    }, 100);
+    
+    // TODO: Show success notification when toast is available
+    console.log('Asset duplicated:', duplicatedAsset.id);
+  };
+
+  // Handle Delete
+  const handleDelete = (asset: Asset) => {
+    setAssetToDelete(asset);
+    setDeleteDialogOpen(true);
+  };
+
+  // Confirm Delete
+  const handleConfirmDelete = () => {
+    if (!assetToDelete) return;
+    
+    // Remove from assets
+    setAssets(prev => prev.filter(a => a.id !== assetToDelete.id));
+    
+    // Clear selection if deleted asset was selected
+    if (selectedRows.includes(assetToDelete.id)) {
+      setSelectedRows(selectedRows.filter(id => id !== assetToDelete.id));
+    }
+    
+    // Close dialog
+    setDeleteDialogOpen(false);
+    setAssetToDelete(null);
+    
+    // TODO: Show success notification when toast is available
+    console.log('Asset deleted:', assetToDelete.id);
+  };
 
   const handleViewChange = async (viewId: string) => {
     setIsLoadingView(true);
@@ -499,9 +558,49 @@ export default function AssetListPage() {
 
   // Handler для inline editing
   const handleUpdateAsset = (assetId: string, updates: Partial<Asset>) => {
-    setAssets(assets.map(asset => 
-      asset.id === assetId ? { ...asset, ...updates } : asset
-    ));
+    setAssets(assets.map(asset => {
+      if (asset.id !== assetId) return asset;
+      
+      // Separate updates by table type
+      const assetUpdates: Partial<Asset> = {};
+      const inspectionUpdates: Partial<Asset['latestInspection']> = {};
+      const observationUpdates: Partial<Pick<Asset, 'observationCount' | 'hasDefects' | 'maxGrade'>> = {};
+      
+      // Get column definitions to determine which table each field belongs to
+      const allColumns = mockColumnDefs || [];
+      
+      Object.keys(updates).forEach(field => {
+        const column = allColumns.find(col => col.field === field);
+        if (!column) {
+          // Default to asset table if column not found
+          (assetUpdates as unknown as Record<string, unknown>)[field] = (updates as unknown as Record<string, unknown>)[field];
+        } else if (column.table === 'asset') {
+          (assetUpdates as unknown as Record<string, unknown>)[field] = (updates as unknown as Record<string, unknown>)[field];
+        } else if (column.table === 'inspection') {
+          (inspectionUpdates as unknown as Record<string, unknown>)[field] = (updates as unknown as Record<string, unknown>)[field];
+        } else if (column.table === 'observation') {
+          if (field === 'observationCount' || field === 'hasDefects' || field === 'maxGrade') {
+            observationUpdates[field] = (updates as unknown as Record<string, unknown>)[field] as number | boolean | undefined;
+          }
+        }
+      });
+      
+      // Build updated asset
+      const updatedAsset: Asset = {
+        ...asset,
+        ...assetUpdates,
+        ...observationUpdates,
+      };
+      
+      // Update inspection if needed
+      if (Object.keys(inspectionUpdates).length > 0) {
+        updatedAsset.latestInspection = asset.latestInspection 
+          ? { ...asset.latestInspection, ...inspectionUpdates }
+          : undefined;
+      }
+      
+      return updatedAsset;
+    }));
     
     // TODO: Show toast notification when toast is available
     // toast({
@@ -839,6 +938,8 @@ export default function AssetListPage() {
                   onSort={handleSort}
                   onColumnReorder={handleColumnReorder}
                   onUpdateAsset={handleUpdateAsset}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
                 />
               </div>
 
@@ -856,23 +957,6 @@ export default function AssetListPage() {
           rightPanel={
             poppedOutSections.map ? null : (
               <div className="flex flex-col h-full">
-                {/* Snapshots Panel - appears when single asset selected */}
-                {selectedAssetForSnapshots && (
-                  <SnapshotsPanel
-                    asset={selectedAssetForSnapshots}
-                    onClose={() => {
-                      setSelectedAssetForSnapshots(null);
-                      setSelectedRows([]);
-                    }}
-                    onSnapshotClick={(snapshotId) => {
-                      // Navigate to inspection at specific observation
-                      if (selectedAssetForSnapshots?.latestInspection) {
-                        router.push(`/inspection/${selectedAssetForSnapshots.id}?observation=${snapshotId}`);
-                      }
-                    }}
-                  />
-                )}
-                
                 {/* Map Panel - reduced height when snapshots panel visible */}
                 <div className={selectedAssetForSnapshots ? "flex-1 min-h-0" : "flex-1"}>
                   <MapPanel
@@ -901,6 +985,23 @@ export default function AssetListPage() {
                     filters={activeView?.filters || []}
                   />
                 </div>
+                
+                {/* Snapshots Panel - appears when single asset selected, below map */}
+                {selectedAssetForSnapshots && (
+                  <SnapshotsPanel
+                    asset={selectedAssetForSnapshots}
+                    onClose={() => {
+                      setSelectedAssetForSnapshots(null);
+                      setSelectedRows([]);
+                    }}
+                    onSnapshotClick={(snapshotId) => {
+                      // Navigate to inspection at specific observation
+                      if (selectedAssetForSnapshots?.latestInspection) {
+                        router.push(`/inspection/${selectedAssetForSnapshots.id}?observation=${snapshotId}`);
+                      }
+                    }}
+                  />
+                )}
               </div>
             )
           }
@@ -1080,6 +1181,19 @@ export default function AssetListPage() {
           results={validationResults}
           onViewErrors={handleViewValidationErrors}
           onDownloadReport={handleDownloadValidationReport}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {assetToDelete && (
+        <DeleteConfirmDialog
+          open={deleteDialogOpen}
+          onClose={() => {
+            setDeleteDialogOpen(false);
+            setAssetToDelete(null);
+          }}
+          onConfirm={handleConfirmDelete}
+          selectedAssets={[assetToDelete]}
         />
       )}
 

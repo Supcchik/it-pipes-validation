@@ -474,7 +474,8 @@ export default function MapPanel({
     }
 
     // If clicked on empty space (not panning, not selecting), call onMapClick
-    if (e && !clickedItem) {
+    // But only for actual mouseup events, not mouseLeave
+    if (e && e.type === 'mouseup' && !clickedItem) {
       onMapClick?.();
     }
   };
@@ -624,7 +625,15 @@ export default function MapPanel({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={(e) => {
+          // Only handle mouse leave for panning/selection, don't trigger onMapClick
+          if (isPanning) {
+            handleMouseUp(e);
+          } else if (selectionTool === 'box' && selectionStart && selectionEnd) {
+            handleMouseUp(e);
+          }
+          // Don't call onMapClick on mouseLeave - it causes deselection when hovering over snapshots panel
+        }}
         className="w-full h-full"
         style={{ cursor: getCursorStyle() }}
       />

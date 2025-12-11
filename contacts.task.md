@@ -714,3 +714,389 @@
 ---
 
 **КІНЕЦЬ ПЛАНУ**
+
+---
+
+# 📋 ПЛАН РЕАЛІЗАЦІЇ: Table Row Interactions & Quick Actions
+**Режим:** [MODE: PLAN]  
+**Дата:** 2025-12-11  
+**Джерело:** new-table-interaction.md  
+**Пріоритет:** Critical
+
+---
+
+## 🎯 ЗАГАЛЬНА СТРАТЕГІЯ
+
+### Аналіз поточної структури:
+- ✅ DataTable має базове inline editing (потрібно покращити)
+- ✅ ActionsColumn існує, але має тільки kebab menu (потрібно додати окрему View кнопку)
+- ✅ Row selection працює (потрібно покращити single-select з map navigation)
+- ✅ SnapshotsPanel існує (потрібно інтегрувати з single-select)
+- ✅ MapPanel інтегрований (потрібно додати навігацію при single-select)
+
+### Порядок реалізації:
+1. **Фаза 1:** Quick Actions Column - розділити на View + More
+2. **Фаза 2:** Inline Field Editing - клік на поле для редагування
+3. **Фаза 3:** Full Row Edit Mode - з меню Edit
+4. **Фаза 4:** Single-Select з Map Navigation + Snapshots
+5. **Фаза 5:** Duplicate та Delete функціональність
+6. **Фаза 6:** Візуальні покращення та feedback
+
+---
+
+## 🔴 ФАЗА 1: Quick Actions Column - View + More Buttons
+
+**Проблема:** Зараз є тільки kebab menu (⋮), потрібно окрему View кнопку (👁️) та More меню.
+
+**Рішення:** Розділити на дві кнопки: View (завжди видима) та More (dropdown).
+
+**Файли для модифікації:**
+- `components/asset-list/ActionsColumn.tsx` - оновити структуру
+- `components/asset-list/DataTable.tsx` - переконатися що колонка sticky
+
+**Технічні деталі:**
+
+**Крок 1.1: Оновити ActionsColumn.tsx**
+- [ ] Оновити `ActionsColumnHeader`:
+  - Збільшити ширину: `w-[90px]` (для двох кнопок)
+  - Залишити sticky positioning
+- [ ] Оновити `ActionsColumnCell`:
+  - Змінити layout на flex з gap: `flex items-center gap-2 justify-center`
+  - Додати дві окремі кнопки:
+    1. **View Button (Eye icon 👁️)**:
+       - `Eye` іконка з lucide-react
+       - Size: 36px × 36px
+       - Color: #6B7280 (gray-500)
+       - Hover: #374151 (gray-700) + background #F3F4F6
+       - Tooltip: "View Details"
+       - Action: `onViewDetails(asset)`
+    2. **More Button (Kebab ⋮)**:
+       - `MoreVertical` іконка
+       - Ті ж стилі що View
+       - Dropdown menu з: Edit, Duplicate, Delete
+  - Оновити стилі кнопок:
+    - `h-9 w-9` (36px)
+    - `rounded-md`
+    - `hover:bg-gray-100`
+    - `transition-colors`
+
+**Крок 1.2: Оновити dropdown menu**
+- [ ] Залишити тільки: Edit, Duplicate, Delete
+- [ ] Видалити "View Details" з меню (тепер окрема кнопка)
+- [ ] Стилізувати Delete як червоний текст
+
+**Крок 1.3: Перевірити sticky positioning**
+- [ ] Переконатися що колонка завжди видима при скролі
+- [ ] Z-index правильний (header: 20, cells: 10)
+- [ ] Shadow з'являється при скролі
+
+**Тестування:**
+- [ ] Перевірити що обидві кнопки видимі
+- [ ] Перевірити hover стани
+- [ ] Перевірити що View кнопка працює
+- [ ] Перевірити що dropdown відкривається правильно
+
+---
+
+## 🔴 ФАЗА 2: Inline Field Editing - Click to Edit
+
+**Проблема:** Зараз редагування тільки через Edit в меню, потрібно клік на поле.
+
+**Рішення:** Додати можливість клікнути на editable field для редагування.
+
+**Файли для модифікації:**
+- `components/asset-list/DataTable.tsx` - додати click handler для полів
+
+**Технічні деталі:**
+
+**Крок 2.1: Додати click handler для editable fields**
+- [ ] Визначити які поля editable:
+  - `column.table === 'asset'`
+  - `column.field !== 'id'`
+  - `column.field !== 'pipeSegment'` (можливо залишити нередагуваним)
+  - `column.type !== 'date'` (дати редагувати окремо)
+- [ ] Додати `onClick` до TableCell для editable полів:
+  - Якщо не в edit mode: входити в single field edit mode
+  - Якщо вже в edit mode: не робити нічого (вже редагується)
+- [ ] Додати visual indicator що поле editable:
+  - Cursor: `cursor-pointer` на hover
+  - Можна додати subtle edit icon на hover (опціонально)
+
+**Крок 2.2: Оновити edit mode state**
+- [ ] Додати `editingField: string | null` до state
+- [ ] Можливі стани:
+  - `editingRowId === null` → нормальний режим
+  - `editingRowId !== null && editingField !== null` → single field edit
+  - `editingRowId !== null && editingField === null` → full row edit
+- [ ] При кліку на field:
+  - `setEditingRowId(asset.id)`
+  - `setEditingField(column.field)`
+  - `setEditingValues({ [column.field]: currentValue })`
+
+**Крок 2.3: Оновити auto-save логіку**
+- [ ] Enter key: зберегти поле → вийти з edit mode
+- [ ] Blur: зберегти поле → вийти з edit mode
+- [ ] Escape: скасувати → вийти з edit mode
+- [ ] Tab: зберегти поточне → перейти до наступного editable поля (якщо в full edit mode)
+
+**Крок 2.4: Додати pre-select value**
+- [ ] При вході в edit mode: виділити весь текст в Input
+- [ ] Використати `autoFocus` та `select()` метод
+
+**Тестування:**
+- [ ] Перевірити клік на editable field
+- [ ] Перевірити що тільки одне поле редагується
+- [ ] Перевірити auto-save на Enter
+- [ ] Перевірити auto-save на blur
+- [ ] Перевірити cancel на Escape
+- [ ] Перевірити pre-select тексту
+
+---
+
+## 🔴 ФАЗА 3: Full Row Edit Mode
+
+**Проблема:** Потрібно редагувати всі поля одночасно.
+
+**Рішення:** Edit з меню активує full row edit mode.
+
+**Файли для модифікації:**
+- `components/asset-list/DataTable.tsx` - додати full edit mode
+- `components/asset-list/ActionsColumn.tsx` - оновити Edit handler
+
+**Технічні деталі:**
+
+**Крок 3.1: Оновити Edit handler**
+- [ ] В `ActionsColumn.tsx`: `onEdit` викликає функцію що активує full edit
+- [ ] В `DataTable.tsx`: створити `startFullRowEdit(asset)`:
+  - `setEditingRowId(asset.id)`
+  - `setEditingField(null)` // null означає full edit
+  - `setEditingValues({ ...asset })` // всі поля
+
+**Крок 3.2: Оновити rendering логіку**
+- [ ] Якщо `editingRowId === asset.id && editingField === null`:
+  - Всі editable поля стають Input
+  - Row має distinct edit mode styling (жовтий/блакитний фон)
+- [ ] Якщо `editingRowId === asset.id && editingField !== null`:
+  - Тільки одне поле в edit mode
+  - Row залишається нормальним
+
+**Крок 3.3: Оновити save логіку для full edit**
+- [ ] Blur на row (клік поза row): зберегти всі змінені поля
+- [ ] Escape: скасувати всі зміни
+- [ ] Tab між полями: зберігати поточне поле перед переходом
+- [ ] Enter в останньому полі: зберегти всі поля → вийти з edit mode
+
+**Крок 3.4: Додати visual feedback**
+- [ ] Edit mode row: `bg-yellow-50` або `bg-blue-50`
+- [ ] Border: `border-2 border-yellow-300` або `border-blue-300`
+- [ ] Всі Input поля мають синю border
+
+**Крок 3.5: Запобігти multiple rows в edit mode**
+- [ ] При вході в edit mode на row B:
+  - Якщо row A в edit mode: спочатку зберегти/скасувати row A
+  - Показати confirmation якщо є незбережені зміни
+
+**Тестування:**
+- [ ] Перевірити що Edit з меню активує full edit
+- [ ] Перевірити що всі поля стають editable
+- [ ] Перевірити Tab navigation між полями
+- [ ] Перевірити save на blur
+- [ ] Перевірити cancel на Escape
+- [ ] Перевірити що тільки один row в edit mode
+
+---
+
+## 🔴 ФАЗА 4: Single-Select з Map Navigation + Snapshots
+
+**Проблема:** Потрібно покращити single-select для показу snapshots та навігації мапи.
+
+**Рішення:** Оновити handleRowClick для single-select поведінки.
+
+**Файли для модифікації:**
+- `app/page.tsx` - оновити handleRowClick
+- `components/asset-list/DataTable.tsx` - переконатися що row click працює правильно
+
+**Технічні деталі:**
+
+**Крок 4.1: Оновити handleRowClick в app/page.tsx**
+- [ ] Поточна логіка:
+  - Якщо `selectedRows.length === 1 && selectedRows[0] === asset.id`: показувати snapshots
+  - Інакше: навігація до inspection page
+- [ ] Нова логіка:
+  - Якщо клік на вже вибраний row: залишити вибраним (snapshots вже показані)
+  - Якщо клік на інший row:
+    - Встановити `setSelectedRows([asset.id])`
+    - Встановити `setSelectedAssetForSnapshots(asset)`
+    - MapPanel автоматично навігує (через selectedAssetIds prop)
+  - Якщо клік поза row (deselect): очистити selection
+
+**Крок 4.2: Оновити MapPanel integration**
+- [ ] Переконатися що `selectedAssetIds` передається правильно
+- [ ] MapPanel має автоматично навігувати до обраного asset
+- [ ] Highlight asset на мапі
+
+**Крок 4.3: Оновити SnapshotsPanel integration**
+- [ ] Переконатися що `selectedAssetForSnapshots` встановлюється при single-select
+- [ ] Panel з'являється над мапою
+- [ ] При закритті panel: deselect row
+
+**Крок 4.4: Додати plot defects на мапі**
+- [ ] Коли asset обраний: показати plot points з defects
+- [ ] Кольори по grade (green/yellow/orange/red)
+- [ ] Hover показує tooltip з інформацією
+
+**Тестування:**
+- [ ] Перевірити single-select → snapshots panel з'являється
+- [ ] Перевірити single-select → map навігує
+- [ ] Перевірити що plot defects показуються
+- [ ] Перевірити deselect → panel зникає
+- [ ] Перевірити що multi-select не показує snapshots
+
+---
+
+## 🔴 ФАЗА 5: Duplicate та Delete функціональність
+
+**Проблема:** Duplicate та Delete не реалізовані.
+
+**Рішення:** Додати handlers для Duplicate та Delete.
+
+**Файли для модифікації:**
+- `app/page.tsx` - додати handlers
+- `components/asset-list/DataTable.tsx` - передати handlers
+- `components/asset-list/DeleteConfirmDialog.tsx` - перевірити чи існує
+
+**Технічні деталі:**
+
+**Крок 5.1: Реалізувати Duplicate**
+- [ ] Створити `handleDuplicate(asset)` в app/page.tsx:
+  - Створити копію asset з новим ID
+  - Додати суфікс "(Copy)" до pipeSegment
+  - Додати до filteredAssets (mock data)
+  - Показати success notification
+  - Опціонально: відкрити новий asset в edit mode
+- [ ] Передати handler до DataTable → ActionsColumn
+
+**Крок 5.2: Реалізувати Delete з confirmation**
+- [ ] Перевірити чи існує DeleteConfirmDialog
+- [ ] Якщо ні: створити простий dialog
+- [ ] Створити `handleDelete(asset)` в app/page.tsx:
+  - Показати confirmation dialog
+  - Якщо підтверджено: видалити з filteredAssets
+  - Показати success notification
+  - Очистити selection якщо видалений asset був обраний
+- [ ] Передати handler до DataTable → ActionsColumn
+
+**Крок 5.3: Оновити DeleteConfirmDialog (якщо існує)**
+- [ ] Показати asset ID/pipeSegment в повідомленні
+- [ ] Кнопки: "Cancel" та "Delete" (червона)
+- [ ] Закрити при Cancel або поза dialog
+
+**Тестування:**
+- [ ] Перевірити Duplicate створює копію
+- [ ] Перевірити що копія має новий ID
+- [ ] Перевірити Delete показує confirmation
+- [ ] Перевірити Delete видаляє asset
+- [ ] Перевірити що selection очищається після delete
+
+---
+
+## 🔴 ФАЗА 6: Візуальні покращення та Feedback
+
+**Проблема:** Потрібно покращити візуальні стани та feedback.
+
+**Рішення:** Додати всі візуальні покращення з специфікації.
+
+**Файли для модифікації:**
+- `components/asset-list/DataTable.tsx` - оновити стилі
+- `components/asset-list/ActionsColumn.tsx` - оновити стилі
+
+**Технічні деталі:**
+
+**Крок 6.1: Оновити row states**
+- [ ] Normal row: білий фон, border-bottom
+- [ ] Selected row: `bg-gray-100` (#F3F4F6), optional left accent bar
+- [ ] Hover row: `bg-gray-50` (#F9FAFB) якщо не selected
+- [ ] Edit mode row: `bg-yellow-50` (#FFFBEB) або `bg-blue-50` (#EFF6FF)
+- [ ] Edit mode border: `border-2 border-yellow-300` або `border-blue-300`
+
+**Крок 6.2: Оновити field states**
+- [ ] Normal field: текст, `cursor-pointer` якщо editable
+- [ ] Hover editable field: `bg-gray-50` (опціонально)
+- [ ] Field in edit mode: Input з синьою border, focus ring
+- [ ] Field saving: spinner indicator
+- [ ] Field saved: зелений checkmark (500ms)
+- [ ] Field error: червона border + error message
+
+**Крок 6.3: Оновити Quick Actions buttons**
+- [ ] Default: `text-gray-500` (#6B7280)
+- [ ] Hover: `text-gray-700` (#374151) + `bg-gray-100`
+- [ ] Active: slight scale down (0.95)
+- [ ] Size: 36px × 36px
+- [ ] Border-radius: 6px
+
+**Крок 6.4: Додати transitions**
+- [ ] Smooth transitions для всіх станів (150ms ease)
+- [ ] Hover effects
+- [ ] Focus rings
+
+**Крок 6.5: Додати loading states**
+- [ ] Spinner під час save операції
+- [ ] Disable interactions під час save
+- [ ] Optimistic updates з rollback на error
+
+**Тестування:**
+- [ ] Перевірити всі візуальні стани
+- [ ] Перевірити hover effects
+- [ ] Перевірити transitions
+- [ ] Перевірити loading indicators
+- [ ] Перевірити error states
+
+---
+
+## ✅ ФІНАЛЬНА ПЕРЕВІРКА
+
+### Тестування всіх функцій:
+- [ ] **Фаза 1:** Quick Actions має View + More кнопки
+- [ ] **Фаза 2:** Клік на поле активує inline editing
+- [ ] **Фаза 3:** Edit з меню активує full row edit
+- [ ] **Фаза 4:** Single-select показує snapshots + навігує мапу
+- [ ] **Фаза 5:** Duplicate та Delete працюють
+- [ ] **Фаза 6:** Всі візуальні стани правильні
+
+### Code Quality:
+- [ ] Всі компоненти < 300 рядків
+- [ ] TypeScript типи дотримані
+- [ ] Немає console.log (окрім TODO)
+- [ ] Коментарі додані для складної логіки
+- [ ] Edge cases оброблені
+
+### Взаємодія з існуючим кодом:
+- [ ] Нічого не поламано з поточної функціональності
+- [ ] Backward compatibility збережена
+- [ ] Mock data працює правильно
+
+---
+
+## 📝 ПРИМІТКИ
+
+### Залежності між завданнями:
+- **Фаза 1 (Quick Actions)** може бути зроблено незалежно
+- **Фаза 2 (Inline Editing)** потребує оновлення DataTable state
+- **Фаза 3 (Full Row Edit)** залежить від Фази 2
+- **Фаза 4 (Single-Select)** потребує SnapshotsPanel та MapPanel
+- **Фаза 5 (Duplicate/Delete)** може бути зроблено незалежно
+- **Фаза 6 (Visual)** може бути зроблено паралельно
+
+### Рекомендований порядок виконання:
+1. **Фаза 1:** 1-2 години
+2. **Фаза 2:** 2-3 години
+3. **Фаза 3:** 2-3 години
+4. **Фаза 4:** 2-3 години
+5. **Фаза 5:** 1-2 години
+6. **Фаза 6:** 1-2 години
+
+**Загальний час:** ~9-15 годин
+
+---
+
+**КІНЕЦЬ ПЛАНУ TABLE ROW INTERACTIONS**

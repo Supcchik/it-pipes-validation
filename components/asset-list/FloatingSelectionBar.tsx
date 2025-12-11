@@ -110,36 +110,37 @@ export default function FloatingSelectionBar({
 
   return (
     <>
-      {/* Floating Bar */}
+      {/* Floating Bar - Positioned left (centered over table) */}
       <div
         className="fixed z-50 
                    bg-white border border-neutral-200 rounded-xl shadow-2xl
                    transition-all duration-300 ease-in-out"
         style={{ 
           bottom: '32px',
-          left: '50%',
+          left: '25%', // Positioned to center over table (table is ~70% width, so 25% centers it)
           transform: 'translateX(-50%)',
           animation: 'fadeInUp 0.3s ease-out forwards'
         }}
       >
-        <div className="flex items-center gap-3 px-6 py-4">
+        <div className="flex items-center gap-2 px-4 py-3">
           {/* Selection Count Badge */}
           <Badge 
             variant="secondary" 
-            className="bg-blue-100 text-blue-700 px-3 py-2 rounded-lg font-medium"
+            className="bg-blue-100 text-blue-700 px-2.5 py-1.5 rounded-lg font-medium text-xs"
           >
             ✓ {selectedAssets.length} selected
           </Badge>
 
           {/* Separator */}
-          <div className="h-6 w-px bg-neutral-300" />
+          <div className="h-5 w-px bg-neutral-300" />
 
-          {/* GROUP 1: Modification Actions */}
+          {/* GROUP 1: Primary Actions (Most Used) */}
           <Button
             variant="outline"
             size="sm"
             onClick={handleAssign}
-            className="gap-2 h-9"
+            className="gap-2 h-8"
+            title="Assign selected assets"
           >
             <UserPlus className="w-4 h-4" />
             Assign
@@ -147,26 +148,16 @@ export default function FloatingSelectionBar({
 
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
             onClick={handleEdit}
-            className="gap-2 h-9"
+            className="h-8 w-8"
+            title="Edit"
           >
             <Edit className="w-4 h-4" />
-            Edit
-          </Button>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDelete}
-            className="gap-2 h-9 text-red-600 hover:bg-red-50 hover:border-red-300"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete
           </Button>
 
           {/* Separator */}
-          <div className="h-6 w-px bg-neutral-300" />
+          <div className="h-5 w-px bg-neutral-300" />
 
           {/* GROUP 2: View/Export Actions */}
           <Button
@@ -175,37 +166,51 @@ export default function FloatingSelectionBar({
             onClick={handleOpenCompare}
             disabled={!isCompareEnabled}
             className={cn(
-              "gap-2 h-9",
+              "gap-2 h-8",
               !isCompareEnabled && "opacity-50 cursor-not-allowed"
             )}
             title={isCompareEnabled ? "Open comparison view" : "Select exactly 2 inspections to compare"}
           >
             <GitCompare className="w-4 h-4" />
-            Open Compare
+            Compare
           </Button>
 
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
             onClick={onExportComplete}
-            className="gap-2 h-9"
+            className="h-8 w-8"
+            title="Export"
           >
             <Download className="w-4 h-4" />
-            Export
           </Button>
 
           {/* Separator */}
-          <div className="h-6 w-px bg-neutral-300" />
+          <div className="h-5 w-px bg-neutral-300" />
 
-          {/* Clear Button */}
+          {/* GROUP 3: Destructive Actions */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleDelete}
+            className="h-8 w-8 text-red-600 hover:bg-red-50 hover:border-red-300"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+
+          {/* Separator */}
+          <div className="h-5 w-px bg-neutral-300" />
+
+          {/* Clear Button - Icon only */}
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
             onClick={handleClear}
-            className="gap-2 h-9 text-neutral-600 hover:text-neutral-900"
+            className="h-8 w-8 text-neutral-600 hover:text-neutral-900"
+            title="Clear selection"
           >
             <X className="w-4 h-4" />
-            Clear
           </Button>
         </div>
       </div>

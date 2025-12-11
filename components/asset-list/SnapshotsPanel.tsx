@@ -86,53 +86,69 @@ export default function SnapshotsPanel({
   };
 
   return (
-    <div className="w-full bg-white border-b border-neutral-200 shadow-sm">
-      <div className="px-4 py-3 flex items-center justify-between border-b border-neutral-200">
+    <div 
+      className="w-full bg-white border-t border-neutral-200 shadow-lg"
+      onMouseEnter={(e) => e.stopPropagation()}
+      onMouseLeave={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onMouseUp={(e) => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="px-4 py-2.5 flex items-center justify-between bg-gradient-to-r from-neutral-50 to-white border-b border-neutral-200">
         <div className="flex items-center gap-2">
+          <div className="w-1.5 h-4 bg-orange-500 rounded-full" />
           <h3 className="text-sm font-semibold text-neutral-900">
             {asset.pipeSegment || asset.id}
           </h3>
+          {asset.latestInspection && (
+            <span className="text-xs text-neutral-500">
+              • {filteredSnapshots.length} snapshot{filteredSnapshots.length !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
+          className="h-7 w-7 hover:bg-neutral-100"
           onClick={onClose}
           aria-label="Close snapshots panel"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4 text-neutral-500" />
         </Button>
       </div>
 
       {/* Visible Grades Filter */}
-      <div className="px-4 py-3 border-b border-neutral-200">
-        <Label className="text-xs font-medium text-neutral-600 mb-2 block">
+      <div className="px-4 py-2.5 bg-neutral-50/50 border-b border-neutral-200">
+        <Label className="text-xs font-medium text-neutral-700 mb-1.5 block">
           Visible Grades:
         </Label>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
           {[0, 1, 2, 3, 4, 5].map(grade => (
-            <div key={grade} className="flex items-center gap-1.5">
+            <label
+              key={grade}
+              htmlFor={`grade-${grade}`}
+              className="flex items-center gap-1.5 cursor-pointer group"
+            >
               <Checkbox
                 id={`grade-${grade}`}
                 checked={visibleGrades.includes(grade)}
                 onCheckedChange={() => toggleGrade(grade)}
+                className="h-3.5 w-3.5"
               />
-              <Label
-                htmlFor={`grade-${grade}`}
-                className="text-xs cursor-pointer flex items-center gap-1"
-              >
-                <span className={`w-2 h-2 rounded-full ${getGradeColor(grade)}`} />
+              <span className="text-xs text-neutral-700 group-hover:text-neutral-900 flex items-center gap-1.5">
+                <span className={`w-2.5 h-2.5 rounded-full ${getGradeColor(grade)} shadow-sm`} />
                 {grade === 0 ? '0-1' : grade.toString()}
-              </Label>
-            </div>
+              </span>
+            </label>
           ))}
         </div>
       </div>
 
       {/* Snapshots Grid */}
-      <div className="px-4 py-3">
+      <div className="px-4 py-3 bg-white">
         {filteredSnapshots.length === 0 ? (
-          <div className="text-center py-8 text-sm text-neutral-500">
+          <div className="text-center py-6 text-sm text-neutral-500">
             No snapshots match the selected grades
           </div>
         ) : (
@@ -140,28 +156,30 @@ export default function SnapshotsPanel({
             {filteredSnapshots.map(snapshot => (
               <div
                 key={snapshot.id}
-                className="flex-shrink-0 w-[120px] cursor-pointer group"
+                className="flex-shrink-0 w-[130px] cursor-pointer group"
                 onClick={() => onSnapshotClick(snapshot.id)}
               >
-                <div className="bg-neutral-100 rounded-lg overflow-hidden border border-neutral-200 group-hover:border-orange-500 transition-colors">
+                <div className="bg-white rounded-lg overflow-hidden border-2 border-neutral-200 group-hover:border-orange-500 group-hover:shadow-md transition-all duration-200">
                   {/* Thumbnail */}
-                  <div className="relative w-full h-[90px] bg-neutral-200 flex items-center justify-center">
-                    <ImageIcon className="w-8 h-8 text-neutral-400" />
-                    <div className="absolute top-1 right-1">
-                      <span className={`w-2 h-2 rounded-full ${getGradeColor(snapshot.grade)} block`} />
+                  <div className="relative w-full h-[100px] bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
+                    <ImageIcon className="w-10 h-10 text-neutral-400" />
+                    <div className="absolute top-2 right-2">
+                      <span className={`w-3 h-3 rounded-full ${getGradeColor(snapshot.grade)} block shadow-sm border border-white/50`} />
                     </div>
+                    {/* Hover overlay */}
+                    <div className="absolute inset-0 bg-orange-500/0 group-hover:bg-orange-500/10 transition-colors" />
                   </div>
                   
                   {/* Info */}
-                  <div className="p-2 space-y-1">
-                    <div className="text-xs font-medium text-neutral-900">
-                      {snapshot.distance}'
+                  <div className="p-2.5 space-y-1 bg-white">
+                    <div className="text-xs font-semibold text-neutral-900 flex items-center gap-1">
+                      <span>{snapshot.distance}'</span>
                     </div>
-                    <div className="text-xs text-neutral-600">
+                    <div className="text-xs font-medium text-neutral-700">
                       {snapshot.code}
                     </div>
                     {snapshot.codeDescription && (
-                      <div className="text-xs text-neutral-500 truncate">
+                      <div className="text-xs text-neutral-500 truncate leading-tight">
                         {snapshot.codeDescription}
                       </div>
                     )}
