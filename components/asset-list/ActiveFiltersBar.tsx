@@ -1,28 +1,36 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { X, Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { FilterConfig } from '@/lib/types/asset-list';
 import { mockColumnDefs } from '@/lib/mock-data/asset-list';
 
 interface ActiveFiltersBarProps {
-  filters: FilterConfig[];
-  onRemoveFilter: (filterId: string) => void;
+  viewFilters: FilterConfig[]; // Filters from saved view
+  temporaryFilters: FilterConfig[]; // Temporary filters (not saved)
+  onRemoveTemporaryFilter: (filterId: string) => void;
   onOpenViewSettings: () => void;
   maxVisible?: number; // default 3
 }
 
 export default function ActiveFiltersBar({
-  filters,
-  onRemoveFilter,
+  viewFilters,
+  temporaryFilters,
+  onRemoveTemporaryFilter,
   onOpenViewSettings,
   maxVisible = 3
 }: ActiveFiltersBarProps) {
-  if (filters.length === 0) return null;
+  // Combine all filters for display
+  const allFilters = [
+    ...viewFilters.map(f => ({ ...f, isFromView: true })),
+    ...temporaryFilters.map(f => ({ ...f, isFromView: false }))
+  ];
 
-  const visibleFilters = filters.slice(0, maxVisible);
-  const hiddenCount = Math.max(0, filters.length - maxVisible);
+  if (allFilters.length === 0) return null;
+
+  const visibleFilters = allFilters.slice(0, maxVisible);
+  const hiddenCount = Math.max(0, allFilters.length - maxVisible);
 
   const getOperatorSymbol = (operator: string) => {
     switch (operator) {
@@ -48,22 +56,43 @@ export default function ActiveFiltersBar({
         <Badge
           key={filter.id}
           variant="secondary"
-          className="gap-2 pl-3 pr-2 py-1.5 bg-white border border-neutral-200 hover:border-neutral-300 transition-colors"
+          className={filter.isFromView 
+            ? "gap-2 pl-3 pr-2 py-1.5 bg-blue-50 border border-blue-200 hover:border-blue-300 transition-colors"
+            : "gap-2 pl-3 pr-2 py-1.5 bg-white border border-neutral-200 hover:border-neutral-300 transition-colors"
+          }
         >
+          {filter.isFromView && (
+            <Bookmark className="w-3 h-3 text-blue-600" title="From view" />
+          )}
           <span className="text-xs">
             <span className="font-medium">{getFieldLabel(filter.field)}</span>
             {' '}
             <span className="text-neutral-400">{getOperatorSymbol(filter.operator)}</span>
             {' '}
             <span className="text-neutral-700">&quot;{String(filter.value)}&quot;</span>
+            {filter.isFromView && (
+              <span className="text-blue-600 ml-1" title="Saved in view">(view)</span>
+            )}
           </span>
-          <button
-            onClick={() => onRemoveFilter(filter.id)}
-            className="hover:bg-neutral-100 rounded-sm p-0.5 transition-colors"
-            aria-label={`Remove filter ${filter.field}`}
-          >
-            <X className="w-3 h-3 text-neutral-500" />
-          </button>
+          {!filter.isFromView && (
+            <button
+              onClick={() => onRemoveTemporaryFilter(filter.id)}
+              className="hover:bg-neutral-100 rounded-sm p-0.5 transition-colors"
+              aria-label={`Remove filter ${filter.field}`}
+            >
+              <X className="w-3 h-3 text-neutral-500" />
+            </button>
+          )}
+          {filter.isFromView && (
+            <button
+              onClick={onOpenViewSettings}
+              className="hover:bg-blue-100 rounded-sm p-0.5 transition-colors"
+              aria-label={`Edit view filters`}
+              title="Edit in view settings"
+            >
+              <X className="w-3 h-3 text-blue-600" />
+            </button>
+          )}
         </Badge>
       ))}
 

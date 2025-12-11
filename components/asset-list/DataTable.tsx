@@ -20,9 +20,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MoreVertical, Eye, Edit, Copy, Trash2, ArrowUpDown, GripVertical, Check, X } from 'lucide-react';
+import { MoreVertical, Eye, Edit, Copy, Trash2, ArrowUpDown, GripVertical, Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Asset, ColumnDef } from '@/lib/types/asset-list';
+import { ActionsColumnHeader, ActionsColumnCell } from './ActionsColumn';
 import {
   DndContext,
   closestCenter,
@@ -142,6 +143,9 @@ export default function DataTable({
   const [isMounted, setIsMounted] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingValues, setEditingValues] = useState<Partial<Asset>>({});
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [savedField, setSavedField] = useState<string | null>(null);
+  const [errorField, setErrorField] = useState<string | null>(null);
 
   // Only enable drag-to-reorder on client side to avoid hydration mismatch
   useEffect(() => {
@@ -272,14 +276,65 @@ export default function DataTable({
   const cancelEditing = () => {
     setEditingRowId(null);
     setEditingValues({});
+    setSavingField(null);
+    setSavedField(null);
+    setErrorField(null);
   };
 
-  const saveEditing = () => {
-    if (editingRowId && onUpdateAsset) {
-      onUpdateAsset(editingRowId, editingValues);
-      setEditingRowId(null);
-      setEditingValues({});
+  // Auto-save handler for single field
+  const handleSaveCell = async (field: string, value: unknown) => {
+    if (!editingRowId || !onUpdateAsset) return;
+
+    // Validate field (basic validation)
+    const isValid = validateField(field, value);
+    if (!isValid) {
+      setErrorField(field);
+      setTimeout(() => setErrorField(null), 3000);
+      return;
     }
+
+    // Clear previous states
+    setErrorField(null);
+    setSavingField(field);
+
+    try {
+      // Update local state optimistically
+      const updatedValues = { ...editingValues, [field]: value };
+      setEditingValues(updatedValues);
+
+      // Call update handler (wrap in Promise if needed)
+      if (onUpdateAsset) {
+        const result = onUpdateAsset(editingRowId, { [field]: value });
+        // Handle both sync and async updates
+        if (result instanceof Promise) {
+          await result;
+        }
+      }
+
+      // Show success indicator
+      setSavingField(null);
+      setSavedField(field);
+      setTimeout(() => {
+        setSavedField(null);
+        // Exit edit mode after successful save
+        setEditingRowId(null);
+        setEditingValues({});
+      }, 500);
+    } catch (error) {
+      // Rollback on error
+      setSavingField(null);
+      setErrorField(field);
+      setTimeout(() => setErrorField(null), 3000);
+      console.error('Save failed:', error);
+    }
+  };
+
+  // Basic field validation
+  const validateField = (field: string, value: unknown): boolean => {
+    // Add validation rules as needed
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string' && value.trim() === '') return false;
+    return true;
   };
 
   const updateField = (field: string, value: unknown) => {
@@ -365,8 +420,8 @@ export default function DataTable({
         />
       ))}
 
-      {/* Actions column */}
-      <TableHead className="w-12" scope="col" aria-label="Actions"></TableHead>
+      {/* Actions column - Fixed sticky column */}
+      <ActionsColumnHeader />
     </TableRow>
   );
 
@@ -439,17 +494,51 @@ export default function DataTable({
                                    column.type !== 'date' &&
                                    column.table === 'asset'; // Only allow editing asset fields for now
 
+                  const isSaving = savingField === column.field;
+                  const isSaved = savedField === column.field;
+                  const hasError = errorField === column.field;
+
                   return (
                     <TableCell key={column.id} className="px-4 py-3 text-sm" onClick={(e) => isEditing && e.stopPropagation()}>
                       {isEditing && isEditable ? (
-                        // Edit mode input
-                        <Input
-                          value={String(editingValues[column.field as keyof Asset] || '')}
-                          onChange={(e) => updateField(column.field, e.target.value)}
-                          className="h-8 text-sm"
-                          autoFocus={columns.indexOf(column) === 1} // Focus first editable field
-                          onClick={(e) => e.stopPropagation()}
-                        />
+                        // Edit mode input with auto-save
+                        <div className="relative flex items-center gap-2">
+                          <Input
+                            value={String(editingValues[column.field as keyof Asset] || '')}
+                            onChange={(e) => updateField(column.field, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSaveCell(column.field, editingValues[column.field as keyof Asset]);
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelEditing();
+                              }
+                            }}
+                            onBlur={() => {
+                              // Auto-save on blur
+                              handleSaveCell(column.field, editingValues[column.field as keyof Asset]);
+                            }}
+                            className={cn(
+                              "h-8 text-sm",
+                              hasError && "border-red-500 focus:border-red-500 focus:ring-red-500",
+                              !hasError && "border-blue-500 focus:border-blue-500 focus:ring-blue-500"
+                            )}
+                            autoFocus={columns.indexOf(column) === 1} // Focus first editable field
+                            onClick={(e) => e.stopPropagation()}
+                            disabled={isSaving}
+                          />
+                          {/* Visual feedback indicators */}
+                          {isSaving && (
+                            <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+                          )}
+                          {isSaved && (
+                            <Check className="h-4 w-4 text-green-500" />
+                          )}
+                          {hasError && (
+                            <X className="h-4 w-4 text-red-500" />
+                          )}
+                        </div>
                       ) : (
                         // Display mode
                         <span>{getCellValue(asset, column)}</span>
@@ -458,72 +547,15 @@ export default function DataTable({
                   );
                 })}
 
-                {/* Actions */}
-                <TableCell
-                  className="w-12"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {isEditing ? (
-                    // Edit mode actions
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        onClick={saveEditing}
-                        className="h-7 text-xs"
-                      >
-                        <Check className="w-3 h-3 mr-1" />
-                        Save
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={cancelEditing}
-                        className="h-7 text-xs"
-                      >
-                        <X className="w-3 h-3 mr-1" />
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    // Normal mode actions
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleViewDetails(asset)}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          View Details
-                        </DropdownMenuItem>
-                        {onUpdateAsset && (
-                          <DropdownMenuItem onClick={() => startEditing(asset)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit Asset
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => handleDuplicate(asset)}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDelete(asset)}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                </TableCell>
+                {/* Actions - Fixed sticky column */}
+                <ActionsColumnCell
+                  asset={asset}
+                  isEditing={isEditing}
+                  onViewDetails={handleViewDetails}
+                  onEdit={onUpdateAsset ? () => startEditing(asset) : handleEdit}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                />
               </TableRow>
             );
           }) : (
@@ -571,18 +603,20 @@ export default function DataTable({
             </div>
           </div>
         </div>
-      ) : onColumnReorder && isMounted ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <div style={{ width: '100%' }}>
-            {tableContent}
-          </div>
-        </DndContext>
       ) : (
-        tableContent
+        <div className="overflow-x-auto">
+          {onColumnReorder && isMounted ? (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              {tableContent}
+            </DndContext>
+          ) : (
+            tableContent
+          )}
+        </div>
       )}
     </div>
   );

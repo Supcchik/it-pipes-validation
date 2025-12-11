@@ -312,7 +312,14 @@ export default function ReportGenerationDialog({
           inspectionCount={getInspectionCount()}
         />;
       case 3:
-        return <Step3Preview config={config} />;
+        return <Step3Preview 
+          config={config} 
+          setConfig={setConfig}
+          getEstimatedPages={getEstimatedPages}
+          getEstimatedFileSize={getEstimatedFileSize}
+          assetCount={getAssetCount()}
+          inspectionCount={getInspectionCount()}
+        />;
       case 4:
         if (generatedReport) {
           return <Step4Success report={generatedReport} onDownload={handleDownload} />;
@@ -418,10 +425,18 @@ export default function ReportGenerationDialog({
                 </Button>
               )}
               {currentStep === 3 && (
-                <Button onClick={handleGenerate}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Generate PDF
-                </Button>
+                <>
+                  <Button 
+                    variant="outline"
+                    onClick={() => setCurrentStep(2)}
+                  >
+                    ← Edit Contents
+                  </Button>
+                  <Button onClick={handleGenerate}>
+                    <FileText className="w-4 h-4 mr-2" />
+                    Generate PDF
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -1276,69 +1291,113 @@ function Step2Options({
   );
 }
 
-// Step 3 Component
-function Step3Preview({ config }: { config: ReportConfig }) {
+// Step 3 Component - Enhanced Preview
+function Step3Preview({ 
+  config, 
+  setConfig,
+  getEstimatedPages,
+  getEstimatedFileSize,
+  assetCount,
+  inspectionCount
+}: { 
+  config: ReportConfig;
+  setConfig: React.Dispatch<React.SetStateAction<ReportConfig>>;
+  getEstimatedPages: () => number;
+  getEstimatedFileSize: () => string;
+  assetCount: number;
+  inspectionCount: number;
+}) {
   const [selectedPage, setSelectedPage] = useState(0);
 
-  const pages = [
-    { id: 0, title: 'Cover Page', type: 'cover' },
-    { id: 1, title: 'Executive Summary', type: 'summary' },
-    { id: 2, title: 'Map Overview', type: 'map' },
-    { id: 3, title: 'Asset List', type: 'table' },
-    { id: 4, title: 'Inspection 1/234', type: 'inspection' },
-  ];
+  // Build pages list based on selected sections
+  const buildPagesList = () => {
+    const pages: Array<{ id: number; title: string; type: string; section: string }> = [];
+    let pageId = 0;
+
+    if (config.sections.coverPage) {
+      pages.push({ id: pageId++, title: 'Cover Page', type: 'cover', section: 'coverPage' });
+    }
+    if (config.sections.executiveSummary) {
+      pages.push({ id: pageId++, title: 'Executive Summary', type: 'summary', section: 'executiveSummary' });
+    }
+    if (config.sections.mapOverview) {
+      pages.push({ id: pageId++, title: 'Map Overview', type: 'map', section: 'mapOverview' });
+    }
+    if (config.sections.assetListTable) {
+      const assetPages = Math.ceil(assetCount / 30);
+      for (let i = 0; i < Math.min(assetPages, 3); i++) {
+        pages.push({ id: pageId++, title: `Asset List (Page ${i + 1})`, type: 'table', section: 'assetListTable' });
+      }
+      if (assetPages > 3) {
+        pages.push({ id: pageId++, title: `... ${assetPages - 3} more asset pages`, type: 'table', section: 'assetListTable' });
+      }
+    }
+    if (config.sections.defectListing) {
+      pages.push({ id: pageId++, title: 'Defect Listing', type: 'defect', section: 'defectListing' });
+    }
+    if (config.sections.images4PerPage || config.sections.images2PerPage || config.sections.images1PerPage) {
+      pages.push({ id: pageId++, title: 'Photo Gallery', type: 'photos', section: 'images' });
+    }
+    if (config.sections.pacpCompliance) {
+      pages.push({ id: pageId++, title: 'PACP Compliance', type: 'compliance', section: 'pacpCompliance' });
+    }
+
+    return pages;
+  };
+
+  const pages = buildPagesList();
+  const totalPages = getEstimatedPages();
+
+  const toggleSection = (sectionKey: keyof typeof config.sections) => {
+    setConfig({
+      ...config,
+      sections: {
+        ...config.sections,
+        [sectionKey]: !config.sections[sectionKey]
+      }
+    });
+  };
+
+  // Get sections checklist
+  const getSectionsChecklist = () => {
+    const sections: Array<{ key: keyof typeof config.sections; name: string; included: boolean; itemCount?: number }> = [];
+    
+    if (config.sections.coverPage) sections.push({ key: 'coverPage', name: 'Cover Page', included: true });
+    if (config.sections.executiveSummary) sections.push({ key: 'executiveSummary', name: 'Executive Summary', included: true, itemCount: assetCount });
+    if (config.sections.assetListTable) sections.push({ key: 'assetListTable', name: 'Asset List', included: true, itemCount: assetCount });
+    if (config.sections.defectListing) sections.push({ key: 'defectListing', name: 'Observations Details', included: true, itemCount: inspectionCount });
+    if (config.sections.images4PerPage || config.sections.images2PerPage || config.sections.images1PerPage) {
+      sections.push({ key: 'images4PerPage', name: 'Photo Gallery', included: true, itemCount: inspectionCount * 4 });
+    }
+    if (config.sections.pacpCompliance) sections.push({ key: 'pacpCompliance', name: 'Compliance Standards', included: true });
+
+    return sections;
+  };
+
+  const sectionsChecklist = getSectionsChecklist();
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold mb-2">Preview Report</h3>
-        <p className="text-sm text-neutral-600">
-          Review your report before generating
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold mb-2">Report Preview</h3>
+          <p className="text-sm text-neutral-600">
+            Review and adjust report contents before generating
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-neutral-600">Estimated:</p>
+          <p className="text-lg font-bold text-blue-600">{totalPages} pages</p>
+        </div>
       </div>
 
       <div className="flex gap-4 h-[500px]">
-        {/* Page List */}
-        <div className="w-56 border border-neutral-200 rounded-lg overflow-hidden flex flex-col bg-neutral-50">
-          <div className="p-3 border-b border-neutral-200 bg-white">
-            <h4 className="text-xs font-semibold text-neutral-600">Page Navigation</h4>
-          </div>
-          <div className="flex-1 overflow-auto p-2 space-y-1">
-            {pages.map((page) => (
-              <button
-                key={page.id}
-                onClick={() => setSelectedPage(page.id)}
-                className={`w-full text-left px-3 py-2.5 rounded text-sm transition-all flex items-center gap-2 ${
-                  selectedPage === page.id
-                    ? 'bg-blue-100 text-blue-700 font-medium shadow-sm border border-blue-300'
-                    : 'hover:bg-neutral-100 border border-transparent'
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                <span>{page.title}</span>
-              </button>
-            ))}
-            <div className="text-xs text-neutral-500 px-3 py-2 text-center">
-              ... 42 more pages
-            </div>
-          </div>
-          <div className="p-2 border-t border-neutral-200 bg-white text-xs text-center text-neutral-600">
-            Page {selectedPage + 1} of {pages.length + 42}
-          </div>
-        </div>
-
-        {/* Preview Area */}
+        {/* Preview Thumbnail */}
         <div className="flex-1 border border-neutral-200 rounded-lg bg-neutral-50 flex flex-col overflow-hidden">
           <div className="p-3 border-b border-neutral-200 bg-white flex items-center justify-between">
             <h4 className="text-xs font-semibold text-neutral-600">Preview</h4>
-            <div className="flex items-center gap-2">
-              <select className="text-xs border border-neutral-300 rounded px-2 py-1">
-                <option>100%</option>
-                <option>75%</option>
-                <option>50%</option>
-                <option>Fit Width</option>
-                <option>Full Page</option>
-              </select>
+            <div className="flex items-center gap-2 text-xs text-neutral-500">
+              Page {selectedPage + 1} of {Math.min(pages.length, 5)}
             </div>
           </div>
           <div className="flex-1 overflow-auto p-6 flex items-center justify-center">
@@ -1351,27 +1410,54 @@ function Step3Preview({ config }: { config: ReportConfig }) {
                   <p>Date: {new Date(config.details.reportDate).toLocaleDateString()}</p>
                 </div>
                 <div className="text-sm font-medium mt-8 pt-6 border-t border-neutral-200">
-                  <p className="text-neutral-700">234 Assets Inspected</p>
-                  <p className="text-neutral-700">47 Pages</p>
+                  <p className="text-neutral-700">{assetCount} Assets Inspected</p>
+                  <p className="text-neutral-700">{totalPages} Pages</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-            <span className="text-orange-600 text-lg">⚡</span>
+        {/* Sections Checklist */}
+        <div className="w-80 border border-neutral-200 rounded-lg overflow-hidden flex flex-col bg-white">
+          <div className="p-3 border-b border-neutral-200 bg-neutral-50">
+            <h4 className="text-xs font-semibold text-neutral-700">Sections Included</h4>
           </div>
-          <div>
-            <p className="text-sm font-semibold text-orange-900 mb-1">Quick Tips</p>
-            <ul className="text-xs text-orange-800 space-y-1">
-              <li>• Click pages in the list to navigate</li>
-              <li>• Use arrow keys to move between pages</li>
-              <li>• Adjust zoom level for better preview</li>
-            </ul>
+          <div className="flex-1 overflow-auto p-3 space-y-2">
+            {sectionsChecklist.map((section) => (
+              <label
+                key={section.key}
+                className="flex items-start gap-2 p-2 rounded hover:bg-neutral-50 cursor-pointer"
+              >
+                <Checkbox
+                  checked={section.included}
+                  onCheckedChange={() => toggleSection(section.key)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-neutral-900">{section.name}</p>
+                  {section.itemCount !== undefined && (
+                    <p className="text-xs text-neutral-500">
+                      {section.itemCount} {section.itemCount === 1 ? 'item' : 'items'}
+                    </p>
+                  )}
+                </div>
+              </label>
+            ))}
+            
+            {/* Optional sections that can be added */}
+            {!config.sections.projectInformation && (
+              <button
+                onClick={() => toggleSection('projectInformation')}
+                className="w-full text-left p-2 rounded hover:bg-neutral-50 text-sm text-neutral-500 flex items-center gap-2"
+              >
+                <span className="text-xs">+</span>
+                <span>Add Project Information</span>
+              </button>
+            )}
+          </div>
+          <div className="p-3 border-t border-neutral-200 bg-neutral-50 text-xs text-neutral-600">
+            <p>File size: {getEstimatedFileSize()}</p>
           </div>
         </div>
       </div>

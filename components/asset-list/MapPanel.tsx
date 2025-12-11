@@ -1,14 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Square, X } from 'lucide-react';
+import { Square, X, ChevronRight, ChevronLeft, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Layers } from 'lucide-react';
-import type { Asset, FilterConfig } from '@/lib/types/asset-list';
+import type { Asset, FilterConfig, PlotPoint } from '@/lib/types/asset-list';
 import { MOCK_MANHOLES, MOCK_PIPE_SEGMENTS, getPipeSegmentByAssetId } from '@/lib/mock-data/mockMapData';
+import { calculatePlotPosition, calculatePipeLength } from '@/lib/utils/map-utils';
+import MapSearch, { type NetworkAsset } from './MapSearch';
+import LayersPopOutWindow from './LayersPopOutWindow';
 import ManholePopup from './ManholePopup';
 import PipeSegmentPopup from './PipeSegmentPopup';
 
@@ -75,6 +78,13 @@ export default function MapPanel({
     sewerLines: true,
     manholes: true,
   });
+  const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
+  const [layersPopOutOpen, setLayersPopOutOpen] = useState(false);
+
+  // Plot points state
+  const [plotPoints, setPlotPoints] = useState<PlotPoint[]>([]);
+  const [hoveredPlotPoint, setHoveredPlotPoint] = useState<string | null>(null);
+  const [visibleGrades, setVisibleGrades] = useState<number[]>([0, 1, 2, 3, 4, 5]);
 
   // Get filtered asset IDs (if not provided, use all assets)
   const effectiveFilteredAssetIds = filteredAssetIds || assets.map(a => a.id);
@@ -160,6 +170,57 @@ export default function MapPanel({
     prevSelectedRef.current = selectedKey;
     autoZoomToAssets(selectedAssetIds);
   }, [selectedAssetIds, effectiveFilteredAssetIds.length, autoZoomToAssets]);
+
+  // Generate plot points for selected assets
+  useEffect(() => {
+    if (selectedAssetIds.length === 0) {
+      setPlotPoints([]);
+      return;
+    }
+
+    const points: PlotPoint[] = [];
+    
+    selectedAssetIds.forEach(assetId => {
+      const asset = assets.find(a => a.id === assetId);
+      if (!asset || !asset.latestInspection) return;
+
+      const pipe = getPipeSegmentByAssetId(assetId);
+      if (!pipe || pipe.coordinates.length < 2) return;
+
+      // Calculate pipe length
+      const pipeLength = calculatePipeLength(
+        pipe.coordinates.map(c => [c.lat, c.lng] as [number, number])
+      );
+
+      // Generate mock observations (based on observationCount)
+      for (let i = 0; i < asset.observationCount; i++) {
+        const distance = (i + 1) * 12; // 12', 24', 36', etc.
+        const grade = Math.min(5, Math.max(0, Math.floor(Math.random() * 6))) as 0 | 1 | 2 | 3 | 4 | 5;
+        
+        // Calculate position along pipe
+        const startCoords = pipe.coordinates[0];
+        const endCoords = pipe.coordinates[pipe.coordinates.length - 1];
+        const position = calculatePlotPosition(
+          startCoords,
+          endCoords,
+          pipeLength,
+          distance
+        );
+
+        points.push({
+          id: `plot-${assetId}-${i}`,
+          distance,
+          code: ['TBD', 'CRK', 'ROOT', 'SAGG', 'DEP'][i % 5],
+          grade,
+          lat: position.lat,
+          lng: position.lng,
+          observationId: `obs-${assetId}-${i}`
+        });
+      }
+    });
+
+    setPlotPoints(points);
+  }, [selectedAssetIds, assets]);
 
   // Convert lat/lng to canvas x/y
   const latLngToXY = useCallback((lat: number, lng: number) => {
@@ -256,6 +317,29 @@ export default function MapPanel({
       });
     }
 
+    // Draw plot points for selected assets
+    const filteredPlotPoints = plotPoints.filter(p => visibleGrades.includes(p.grade));
+    filteredPlotPoints.forEach(point => {
+      const { x, y } = latLngToXY(point.lat, point.lng);
+      const isHovered = hoveredPlotPoint === point.id;
+
+      // Get color based on grade
+      let color: string;
+      if (point.grade <= 1) color = '#10b981'; // Green
+      else if (point.grade === 2) color = '#fbbf24'; // Yellow
+      else if (point.grade === 3) color = '#f97316'; // Orange
+      else color = '#ef4444'; // Red
+
+      // Draw circle
+      ctx.beginPath();
+      ctx.arc(x, y, isHovered ? 6 : 4, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+
     // Draw selection box
     if (selectionTool === 'box' && selectionStart && selectionEnd) {
       ctx.strokeStyle = '#3B82F6';
@@ -270,7 +354,7 @@ export default function MapPanel({
       ctx.strokeRect(selectionStart.x, selectionStart.y, width, height);
       ctx.setLineDash([]);
     }
-  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assets]);
+  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assets, plotPoints, visibleGrades, hoveredPlotPoint]);
 
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -286,6 +370,21 @@ export default function MapPanel({
       setSelectionStart({ x, y });
       setSelectionEnd({ x, y });
       return;
+    }
+
+    // Check for plot point click
+    const filteredPlotPoints = plotPoints.filter(p => visibleGrades.includes(p.grade));
+    for (const point of filteredPlotPoints) {
+      const pos = latLngToXY(point.lat, point.lng);
+      const distance = Math.sqrt((x - pos.x) ** 2 + (y - pos.y) ** 2);
+      if (distance <= 6) {
+        // Navigate to inspection at this observation
+        const asset = assets.find(a => selectedAssetIds.includes(a.id));
+        if (asset?.latestInspection) {
+          window.location.href = `/inspection/${asset.id}?observation=${point.observationId}`;
+        }
+        return;
+      }
     }
 
     // Check for feature click
@@ -332,7 +431,20 @@ export default function MapPanel({
       return;
     }
 
-    // Hover detection
+    // Hover detection for plot points
+    const filteredPlotPoints = plotPoints.filter(p => visibleGrades.includes(p.grade));
+    let hoveredPlot: string | null = null;
+    for (const point of filteredPlotPoints) {
+      const pos = latLngToXY(point.lat, point.lng);
+      const distance = Math.sqrt((x - pos.x) ** 2 + (y - pos.y) ** 2);
+      if (distance <= 6) { // 6px radius for hover
+        hoveredPlot = point.id;
+        break;
+      }
+    }
+    setHoveredPlotPoint(hoveredPlot);
+
+    // Hover detection for features
     const hoveredFeature = detectFeatureAtPoint(x, y);
     setHoveredItem(hoveredFeature);
   };
@@ -517,8 +629,32 @@ export default function MapPanel({
         style={{ cursor: getCursorStyle() }}
       />
 
-      {/* Basemap Selector */}
-      <div className="absolute top-4 right-4 z-10">
+      {/* Map Search - top right */}
+      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+        <MapSearch
+          onAssetSelect={(asset) => {
+            // Navigate map to asset location
+            setCenter({ lat: asset.lat, lng: asset.lng });
+            setZoom(17);
+            
+            // Check if asset exists in current table
+            const existingAsset = assets.find(a => 
+              a.pipeSegment === asset.name || 
+              a.upstreamMH === asset.name || 
+              a.downstreamMH === asset.name
+            );
+            
+            if (existingAsset) {
+              // Highlight row in table
+              onAssetSelect([existingAsset.id]);
+            } else {
+              // Show "Create Work Order" option (could be a toast or modal)
+              console.log(`Asset ${asset.name} not in current table. Create Work Order?`);
+            }
+          }}
+        />
+        
+        {/* Basemap Selector */}
         <Select value={basemap} onValueChange={setBasemap}>
           <SelectTrigger className="w-36 bg-white shadow-md">
             <Layers className="w-4 h-4 mr-2" />
@@ -534,39 +670,81 @@ export default function MapPanel({
       </div>
 
       {/* Layer Controls */}
-      <div className="absolute top-20 right-4 bg-white rounded-lg shadow-md border border-neutral-200 px-3 py-2.5 z-10">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="layer-sewer"
-              checked={layers.sewerLines}
-              onCheckedChange={(checked) =>
-                setLayers({ ...layers, sewerLines: checked as boolean })
-              }
-              className="h-4 w-4 rounded border-neutral-300"
-            />
-            <Label htmlFor="layer-sewer" className="text-sm font-medium cursor-pointer select-none">
-              SewerLines_All
-            </Label>
+      {!layersPanelCollapsed ? (
+        <div className="absolute top-20 right-4 bg-white rounded-lg shadow-md border border-neutral-200 z-10">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
+            <Label className="text-sm font-semibold text-neutral-700">Layers</Label>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setLayersPopOutOpen(true)}
+                title="Pop out layers panel"
+              >
+                <ExternalLink className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setLayersPanelCollapsed(true)}
+                title="Collapse layers panel"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          
-          <div className="w-px h-5 bg-neutral-200" />
-          
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="layer-manholes"
-              checked={layers.manholes}
-              onCheckedChange={(checked) =>
-                setLayers({ ...layers, manholes: checked as boolean })
-              }
-              className="h-4 w-4 rounded border-neutral-300"
-            />
-            <Label htmlFor="layer-manholes" className="text-sm font-medium cursor-pointer select-none">
-              Manholes_All
-            </Label>
+          <div className="px-3 py-2.5 space-y-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="layer-sewer"
+                checked={layers.sewerLines}
+                onCheckedChange={(checked) =>
+                  setLayers({ ...layers, sewerLines: checked as boolean })
+                }
+                className="h-4 w-4 rounded border-neutral-300"
+              />
+              <Label htmlFor="layer-sewer" className="text-sm font-medium cursor-pointer select-none">
+                SewerLines_All
+              </Label>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="layer-manholes"
+                checked={layers.manholes}
+                onCheckedChange={(checked) =>
+                  setLayers({ ...layers, manholes: checked as boolean })
+                }
+                className="h-4 w-4 rounded border-neutral-300"
+              />
+              <Label htmlFor="layer-manholes" className="text-sm font-medium cursor-pointer select-none">
+                Manholes_All
+              </Label>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="icon"
+          className="absolute top-20 right-4 bg-white shadow-md z-10 h-9 w-9"
+          onClick={() => setLayersPanelCollapsed(false)}
+          title="Expand layers panel"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+      )}
+
+      {/* Pop-out Layers Window */}
+      {layersPopOutOpen && typeof window !== 'undefined' && (
+        <LayersPopOutWindow
+          layers={layers}
+          onLayersChange={setLayers}
+          onClose={() => setLayersPopOutOpen(false)}
+        />
+      )}
 
       {/* Integrated Map Toolbar */}
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">

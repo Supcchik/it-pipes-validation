@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { UserPlus, Edit, Trash2, ExternalLink, Download, X } from 'lucide-react';
+import { UserPlus, Edit, Trash2, ExternalLink, Download, X, GitCompare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import AssignDialog from './AssignDialog';
 import DeleteConfirmDialog from './DeleteConfirmDialog';
 import type { Asset } from '@/lib/types/asset-list';
@@ -15,7 +16,7 @@ interface FloatingSelectionBarProps {
   onEditComplete: (updates: Partial<Asset>) => void;
   onDeleteComplete: () => void;
   onExportComplete: () => void;
-  onOpenInTabs: () => void;
+  onOpenCompare: () => void; // Changed from onOpenInTabs
 }
 
 export default function FloatingSelectionBar({
@@ -25,7 +26,7 @@ export default function FloatingSelectionBar({
   onEditComplete,
   onDeleteComplete,
   onExportComplete,
-  onOpenInTabs
+  onOpenCompare
 }: FloatingSelectionBarProps) {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -90,8 +91,14 @@ export default function FloatingSelectionBar({
     }
   };
 
-  // ACTION 4: OPEN IN TABS
-  // Handled by parent component via onOpenInTabs prop
+  // ACTION 4: OPEN COMPARE
+  // Only enabled when exactly 2 assets selected
+  const isCompareEnabled = selectedAssets.length === 2;
+  const handleOpenCompare = () => {
+    if (isCompareEnabled) {
+      onOpenCompare();
+    }
+  };
 
   // ACTION 5: EXPORT
   // Handled by parent component via onExportComplete prop
@@ -165,11 +172,16 @@ export default function FloatingSelectionBar({
           <Button
             variant="outline"
             size="sm"
-            onClick={onOpenInTabs}
-            className="gap-2 h-9"
+            onClick={handleOpenCompare}
+            disabled={!isCompareEnabled}
+            className={cn(
+              "gap-2 h-9",
+              !isCompareEnabled && "opacity-50 cursor-not-allowed"
+            )}
+            title={isCompareEnabled ? "Open comparison view" : "Select exactly 2 inspections to compare"}
           >
-            <ExternalLink className="w-4 h-4" />
-            Open in Tabs
+            <GitCompare className="w-4 h-4" />
+            Open Compare
           </Button>
 
           <Button

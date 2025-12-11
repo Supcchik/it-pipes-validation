@@ -29,6 +29,27 @@ export interface FilterConfig {
   table: 'asset' | 'inspection' | 'observation';
 }
 
+// Filter Condition (for advanced grouping)
+export interface FilterCondition {
+  id: string;
+  field: string;
+  operator: 'equals' | 'contains' | 'startsWith' | 'greaterThan' | 'lessThan';
+  value: unknown;
+}
+
+// Filter Group (for AND/OR grouping)
+export interface FilterGroup {
+  id: string;
+  conditions: FilterCondition[];
+  operator: 'AND' | 'OR'; // between conditions within group
+}
+
+// Complex Filter (with groups)
+export interface ComplexFilter {
+  groups: FilterGroup[];
+  groupOperator: 'AND' | 'OR'; // between groups
+}
+
 // Column Definition
 export interface ColumnDef {
   id: string;
@@ -79,4 +100,15 @@ export interface Asset {
     type: 'LineString';
     coordinates: [number, number][];
   };
+}
+
+// Plot Point for defects on map
+export interface PlotPoint {
+  id: string;
+  distance: number; // Distance along pipe in feet
+  code: string;
+  grade: 0 | 1 | 2 | 3 | 4 | 5;
+  lat: number; // Calculated from pipe geometry + distance
+  lng: number;
+  observationId: string;
 }

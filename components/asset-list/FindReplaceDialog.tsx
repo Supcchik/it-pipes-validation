@@ -27,7 +27,7 @@ export interface ReplaceOperation {
   field: string;
   findValue: string;
   replaceValue: string;
-  scope: 'selection' | 'project';
+  scope: 'selection' | 'entireView' | 'project';
   matchedAssetIds: string[];
 }
 
@@ -37,6 +37,7 @@ interface FindReplaceDialogProps {
   columns: ColumnDef[];
   assets: Asset[];
   selectedAssetIds: string[];
+  filteredAssets?: Asset[]; // Assets after filters applied (for "Entire view" scope)
   onReplace: (updates: ReplaceOperation) => void;
 }
 
@@ -46,21 +47,30 @@ export default function FindReplaceDialog({
   columns,
   assets,
   selectedAssetIds,
+  filteredAssets,
   onReplace
 }: FindReplaceDialogProps) {
   const [field, setField] = useState('');
   const [operator, setOperator] = useState<'equals' | 'contains'>('contains');
   const [findValue, setFindValue] = useState('');
   const [replaceValue, setReplaceValue] = useState('');
-  const [scope, setScope] = useState<'selection' | 'project'>('selection');
+  const [scope, setScope] = useState<'selection' | 'entireView' | 'project'>('selection');
 
   // Calculate matches
   const matchedAssets = useMemo(() => {
     if (!field || !findValue) return [];
 
-    const assetsToSearch = scope === 'selection' 
-      ? assets.filter(a => selectedAssetIds.includes(a.id))
-      : assets;
+    // Determine which assets to search based on scope
+    let assetsToSearch: Asset[];
+    if (scope === 'selection') {
+      assetsToSearch = assets.filter(a => selectedAssetIds.includes(a.id));
+    } else if (scope === 'entireView') {
+      // Use filtered assets (after filters applied) or fallback to all assets
+      assetsToSearch = filteredAssets || assets;
+    } else {
+      // 'project' scope - all assets
+      assetsToSearch = assets;
+    }
 
     return assetsToSearch.filter(asset => {
       // Get value based on field - only asset fields for now
@@ -72,7 +82,7 @@ export default function FindReplaceDialog({
         return value.toLowerCase().includes(findValue.toLowerCase());
       }
     });
-  }, [assets, field, operator, findValue, scope, selectedAssetIds]);
+  }, [assets, filteredAssets, field, operator, findValue, scope, selectedAssetIds]);
 
   const handleReplace = () => {
     if (matchedAssets.length === 0) return;
@@ -165,17 +175,23 @@ export default function FindReplaceDialog({
           <div className="space-y-3">
             <Label className="text-base font-semibold">Replace In</Label>
             
-            <RadioGroup value={scope} onValueChange={(val: 'selection' | 'project') => setScope(val)}>
+            <RadioGroup value={scope} onValueChange={(val: 'selection' | 'entireView' | 'project') => setScope(val)}>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="selection" id="selection" />
                 <Label htmlFor="selection" className="cursor-pointer">
-                  Selection ({selectedAssetIds.length} assets)
+                  Selected rows ({selectedAssetIds.length} selected)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="entireView" id="entireView" />
+                <Label htmlFor="entireView" className="cursor-pointer">
+                  Entire view ({(filteredAssets || assets).length} in view)
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="project" id="project" />
                 <Label htmlFor="project" className="cursor-pointer">
-                  Entire Project ({assets.length} assets)
+                  Project ({assets.length} total assets)
                 </Label>
               </div>
             </RadioGroup>

@@ -30,8 +30,9 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { View, ColumnDef, FilterConfig, Asset } from '@/lib/types/asset-list';
+import type { View, ColumnDef, FilterConfig, Asset, ComplexFilter } from '@/lib/types/asset-list';
 import { mockColumnDefs } from '@/lib/mock-data/asset-list';
+import AdvancedFiltersDialog from './AdvancedFiltersDialog';
 
 interface ViewSettingsDialogProps {
   open: boolean;
@@ -63,6 +64,7 @@ export default function ViewSettingsDialog({
     inspection: false,
     observation: false
   });
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   // Sync state with currentView when dialog opens or view changes
   useEffect(() => {
@@ -630,16 +632,26 @@ export default function ViewSettingsDialog({
                   <h3 className="text-sm font-medium text-neutral-700">
                     Active Filters ({filters.length}):
                   </h3>
-                  {filters.length > 0 && (
+                  <div className="flex items-center gap-2">
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      onClick={() => setFilters([])}
+                      onClick={() => setAdvancedFiltersOpen(true)}
                       className="h-7 text-xs"
                     >
-                      Clear All
+                      Advanced Filters
                     </Button>
-                  )}
+                    {filters.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setFilters([])}
+                        className="h-7 text-xs"
+                      >
+                        Clear All
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2 border rounded-md p-2 bg-neutral-50">
                   {filters.length === 0 ? (
@@ -878,6 +890,33 @@ export default function ViewSettingsDialog({
           </Button>
         </div>
       </DialogContent>
+
+      {/* Advanced Filters Dialog */}
+      <AdvancedFiltersDialog
+        open={advancedFiltersOpen}
+        onClose={() => setAdvancedFiltersOpen(false)}
+        onApply={(complexFilter) => {
+          // Convert ComplexFilter to FilterConfig[] for now
+          // TODO: Store ComplexFilter separately or convert properly
+          const convertedFilters: FilterConfig[] = [];
+          complexFilter.groups.forEach(group => {
+            group.conditions.forEach(condition => {
+              // Find table type from field
+              const column = mockColumnDefs.find(c => c.field === condition.field);
+              if (column) {
+                convertedFilters.push({
+                  id: condition.id,
+                  field: condition.field,
+                  operator: condition.operator,
+                  value: condition.value,
+                  table: column.table
+                });
+              }
+            });
+          });
+          setFilters([...filters, ...convertedFilters]);
+        }}
+      />
     </Dialog>
   );
 }

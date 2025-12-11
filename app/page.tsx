@@ -17,6 +17,7 @@ import ManageViewsDialog from '@/components/asset-list/ManageViewsDialog';
 import ActiveFiltersBar from '@/components/asset-list/ActiveFiltersBar';
 import CreateViewDialog from '@/components/asset-list/CreateViewDialog';
 import FloatingSelectionBar from '@/components/asset-list/FloatingSelectionBar';
+import SnapshotsPanel from '@/components/asset-list/SnapshotsPanel';
 import ValidationDialog, { type ValidationOptions } from '@/components/asset-list/ValidationDialog';
 import ValidationProgressDialog from '@/components/asset-list/ValidationProgressDialog';
 import ValidationResultsDialog, { type ValidationResults } from '@/components/asset-list/ValidationResultsDialog';
@@ -27,7 +28,7 @@ import MoveToProjectDialog from '@/components/asset-list/MoveToProjectDialog';
 import CopyToProjectDialog from '@/components/asset-list/CopyToProjectDialog';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
-import type { View, Asset, ColumnDef } from '@/lib/types/asset-list';
+import type { View, Asset, ColumnDef, FilterConfig } from '@/lib/types/asset-list';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
 
 export default function AssetListPage() {
@@ -55,6 +56,8 @@ export default function AssetListPage() {
   });
   const [simpleSearchResults, setSimpleSearchResults] = useState<Asset[] | null>(null); // НОВИЙ: null = no search, [] = no results, [assets] = results
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
+  const [selectedAssetForSnapshots, setSelectedAssetForSnapshots] = useState<Asset | null>(null);
+  const [temporaryFilters, setTemporaryFilters] = useState<FilterConfig[]>([]); // Temporary filters (not saved in view)
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState<SearchQuery | null>(null);
   const [isLoadingView, setIsLoadingView] = useState(false);
@@ -139,67 +142,77 @@ export default function AssetListPage() {
       return filtered;
     }
 
-    // Apply view filters
+    // Helper function to apply a single filter
+    const applyFilter = (asset: Asset, filter: FilterConfig): boolean => {
+      // Get value based on table type
+      let value: unknown;
+      
+      if (filter.table === 'asset') {
+        value = (asset as unknown as Record<string, unknown>)[filter.field];
+      } else if (filter.table === 'inspection' && asset.latestInspection) {
+        value = (asset.latestInspection as unknown as Record<string, unknown>)[filter.field];
+      } else if (filter.table === 'observation') {
+        if (filter.field === 'observationCount') {
+          value = asset.observationCount;
+        } else if (filter.field === 'hasDefects') {
+          value = asset.hasDefects;
+        } else if (filter.field === 'maxGrade') {
+          value = asset.maxGrade;
+        } else {
+          value = undefined;
+        }
+      } else {
+        // If inspection/observation field but no data, filter out
+        return false;
+      }
+
+      // Handle null/undefined values
+      if (value === null || value === undefined) {
+        return false;
+      }
+
+      // Apply operator
+      switch (filter.operator) {
+        case 'equals':
+          // For boolean, compare directly
+          if (typeof value === 'boolean' || typeof filter.value === 'boolean') {
+            return value === filter.value;
+          }
+          // For numbers, compare as numbers
+          if (typeof value === 'number' || typeof filter.value === 'number') {
+            return Number(value) === Number(filter.value);
+          }
+          // For strings, case-insensitive comparison
+          return String(value).toLowerCase() === String(filter.value).toLowerCase();
+        
+        case 'contains':
+          return String(value).toLowerCase().includes(String(filter.value).toLowerCase());
+        
+        case 'startsWith':
+          return String(value).toLowerCase().startsWith(String(filter.value).toLowerCase());
+        
+        case 'greaterThan':
+          return Number(value) > Number(filter.value);
+        
+        case 'lessThan':
+          return Number(value) < Number(filter.value);
+        
+        default:
+          return true;
+      }
+    };
+
+    // Apply view filters (from saved view)
     if (activeView.filters && activeView.filters.length > 0) {
       activeView.filters.forEach(filter => {
-        filtered = filtered.filter(asset => {
-          // Get value based on table type
-          let value: unknown;
-          
-          if (filter.table === 'asset') {
-            value = (asset as unknown as Record<string, unknown>)[filter.field];
-          } else if (filter.table === 'inspection' && asset.latestInspection) {
-            value = (asset.latestInspection as unknown as Record<string, unknown>)[filter.field];
-          } else if (filter.table === 'observation') {
-            if (filter.field === 'observationCount') {
-              value = asset.observationCount;
-            } else if (filter.field === 'hasDefects') {
-              value = asset.hasDefects;
-            } else if (filter.field === 'maxGrade') {
-              value = asset.maxGrade;
-            } else {
-              value = undefined;
-            }
-          } else {
-            // If inspection/observation field but no data, filter out
-            return false;
-          }
+        filtered = filtered.filter(asset => applyFilter(asset, filter));
+      });
+    }
 
-          // Handle null/undefined values
-          if (value === null || value === undefined) {
-            return false;
-          }
-
-          // Apply operator
-          switch (filter.operator) {
-            case 'equals':
-              // For boolean, compare directly
-              if (typeof value === 'boolean' || typeof filter.value === 'boolean') {
-                return value === filter.value;
-              }
-              // For numbers, compare as numbers
-              if (typeof value === 'number' || typeof filter.value === 'number') {
-                return Number(value) === Number(filter.value);
-              }
-              // For strings, case-insensitive comparison
-              return String(value).toLowerCase() === String(filter.value).toLowerCase();
-            
-            case 'contains':
-              return String(value).toLowerCase().includes(String(filter.value).toLowerCase());
-            
-            case 'startsWith':
-              return String(value).toLowerCase().startsWith(String(filter.value).toLowerCase());
-            
-            case 'greaterThan':
-              return Number(value) > Number(filter.value);
-            
-            case 'lessThan':
-              return Number(value) < Number(filter.value);
-            
-            default:
-              return true;
-          }
-        });
+    // Apply temporary filters (on top of view filters)
+    if (temporaryFilters.length > 0) {
+      temporaryFilters.forEach(filter => {
+        filtered = filtered.filter(asset => applyFilter(asset, filter));
       });
     }
 
@@ -305,13 +318,41 @@ export default function AssetListPage() {
 
   // Handlers
   const handleRowClick = (asset: Asset) => {
-    router.push(`/inspection/${asset.id}`);
+    // Single-select: show snapshots panel and navigate map
+    // Multi-select: navigate to inspection page
+    if (selectedRows.length === 1 && selectedRows[0] === asset.id) {
+      // Already selected, show snapshots panel
+      const selectedAsset = filteredAssets.find(a => a.id === asset.id);
+      if (selectedAsset) {
+        setSelectedAssetForSnapshots(selectedAsset);
+      }
+    } else {
+      // Navigate to inspection page
+      router.push(`/inspection/${asset.id}`);
+    }
   };
+
+  // Handle selection changes
+  useEffect(() => {
+    if (selectedRows.length === 1) {
+      // Single-select: show snapshots panel
+      const selectedAsset = filteredAssets.find(a => a.id === selectedRows[0]);
+      if (selectedAsset) {
+        setSelectedAssetForSnapshots(selectedAsset);
+      }
+    } else {
+      // Multi-select or no selection: hide snapshots panel
+      setSelectedAssetForSnapshots(null);
+    }
+  }, [selectedRows, filteredAssets]);
 
   const handleViewChange = async (viewId: string) => {
     setIsLoadingView(true);
     setActiveViewId(viewId);
     setCurrentPage(1);
+    
+    // Clear temporary filters when switching views (view filters are applied from the new view)
+    setTemporaryFilters([]);
     
     // Simulate loading (in real app, this would fetch data)
     await new Promise(resolve => setTimeout(resolve, 300));
@@ -758,8 +799,11 @@ export default function AssetListPage() {
         />
 
         <ActiveFiltersBar
-          filters={activeView?.filters || []}
-          onRemoveFilter={handleRemoveFilter}
+          viewFilters={activeView?.filters || []}
+          temporaryFilters={temporaryFilters}
+          onRemoveTemporaryFilter={(filterId) => {
+            setTemporaryFilters(prev => prev.filter(f => f.id !== filterId));
+          }}
           onOpenViewSettings={() => setViewSettingsOpen(true)}
         />
       </div>
@@ -811,31 +855,53 @@ export default function AssetListPage() {
           }
           rightPanel={
             poppedOutSections.map ? null : (
-              <MapPanel
-                assets={filteredAssets}
-                selectedAssetIds={selectedRows}
-                filteredAssetIds={filteredAssets.map(a => a.id)}
-                onAssetSelect={(ids) => {
-                  setSelectedRows(ids);
-                  // Scroll to first selected row in table
-                  if (typeof window !== 'undefined' && ids.length > 0) {
-                    setTimeout(() => {
-                      const row = document.querySelector(`[data-asset-id="${ids[0]}"]`);
-                      if (row) {
-                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        // Flash animation
-                        row.classList.add('flash-highlight');
-                        setTimeout(() => row.classList.remove('flash-highlight'), 1000);
+              <div className="flex flex-col h-full">
+                {/* Snapshots Panel - appears when single asset selected */}
+                {selectedAssetForSnapshots && (
+                  <SnapshotsPanel
+                    asset={selectedAssetForSnapshots}
+                    onClose={() => {
+                      setSelectedAssetForSnapshots(null);
+                      setSelectedRows([]);
+                    }}
+                    onSnapshotClick={(snapshotId) => {
+                      // Navigate to inspection at specific observation
+                      if (selectedAssetForSnapshots?.latestInspection) {
+                        router.push(`/inspection/${selectedAssetForSnapshots.id}?observation=${snapshotId}`);
                       }
-                    }, 100);
-                  }
-                }}
-                onMapClick={() => {
-                  // Deselect при кліку на empty map area
-                  setSelectedRows([]);
-                }}
-                filters={activeView?.filters || []}
-              />
+                    }}
+                  />
+                )}
+                
+                {/* Map Panel - reduced height when snapshots panel visible */}
+                <div className={selectedAssetForSnapshots ? "flex-1 min-h-0" : "flex-1"}>
+                  <MapPanel
+                    assets={filteredAssets}
+                    selectedAssetIds={selectedRows}
+                    filteredAssetIds={filteredAssets.map(a => a.id)}
+                    onAssetSelect={(ids) => {
+                      setSelectedRows(ids);
+                      // Scroll to first selected row in table
+                      if (typeof window !== 'undefined' && ids.length > 0) {
+                        setTimeout(() => {
+                          const row = document.querySelector(`[data-asset-id="${ids[0]}"]`);
+                          if (row) {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Flash animation
+                            row.classList.add('flash-highlight');
+                            setTimeout(() => row.classList.remove('flash-highlight'), 1000);
+                          }
+                        }, 100);
+                      }
+                    }}
+                    onMapClick={() => {
+                      // Deselect при кліку на empty map area
+                      setSelectedRows([]);
+                    }}
+                    filters={activeView?.filters || []}
+                  />
+                </div>
+              </div>
             )
           }
         />
@@ -891,8 +957,25 @@ export default function AssetListPage() {
           // TODO: Show toast notification
           console.log(`Exported ${selectedRows.length} assets`);
         }}
+        onOpenCompare={() => {
+          // Open compare view for exactly 2 selected inspections
+          const selectedAssets = filteredAssets.filter(asset => selectedRows.includes(asset.id));
+          
+          if (selectedAssets.length !== 2) {
+            console.warn('Open Compare requires exactly 2 selected assets');
+            return;
+          }
+          
+          const [inspection1, inspection2] = selectedAssets;
+          
+          // Navigate to comparison view
+          router.push(`/inspection-viewer?mode=compare&current=${inspection1.id}&previous=${inspection2.id}`);
+          
+          // Clear selection after navigation
+          setSelectedRows([]);
+        }}
         onOpenInTabs={() => {
-          // This is handled in FloatingSelectionBar, but we can add additional logic here if needed
+          // Legacy handler - kept for backward compatibility but not used
           const selectedAssets = filteredAssets.filter(asset => selectedRows.includes(asset.id));
           const count = selectedAssets.length;
           
@@ -947,7 +1030,8 @@ export default function AssetListPage() {
         open={findReplaceOpen}
         onClose={() => setFindReplaceOpen(false)}
         columns={mockColumnDefs}
-        assets={filteredAssets}
+        assets={assets} // All assets for "Project" scope
+        filteredAssets={filteredAssets} // Filtered assets for "Entire view" scope
         selectedAssetIds={selectedRows}
         onReplace={handleFindReplace}
       />

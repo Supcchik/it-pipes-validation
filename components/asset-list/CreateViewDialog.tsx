@@ -136,8 +136,8 @@ export default function CreateViewDialog({
                   <div className="flex items-start gap-3">
                     <Filter className="w-5 h-5 text-orange-600 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium">Starting Template</p>
-                      <p className="text-xs text-neutral-600">Start from scratch or copy an existing view</p>
+                      <p className="text-sm font-medium">Starting Point</p>
+                      <p className="text-xs text-neutral-600">Start from scratch or copy from existing tab</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -211,16 +211,19 @@ export default function CreateViewDialog({
           </>
         )}
 
-        {/* Step 3: Template Selection */}
+        {/* Step 3: Starting Point Selection */}
         {step === 'template' && (
           <>
             <DialogHeader>
               <DialogTitle>Choose a Starting Point</DialogTitle>
+              <p className="text-sm text-neutral-600 mt-2">
+                Copy column and filter settings from existing tabs
+              </p>
             </DialogHeader>
 
             <div className="space-y-4 py-6 overflow-y-auto flex-1 min-h-0">
               <RadioGroup value={selectedTemplate} onValueChange={setSelectedTemplate}>
-                {/* Blank Template */}
+                {/* Blank Starting Point */}
                 <Card 
                   className={`cursor-pointer transition-colors ${
                     selectedTemplate === 'blank' 
@@ -242,9 +245,9 @@ export default function CreateViewDialog({
                   </CardHeader>
                 </Card>
 
-                {/* Existing Views as Templates */}
+                {/* Existing Views as Starting Points */}
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-neutral-700">Or copy from existing view:</p>
+                  <p className="text-sm font-medium text-neutral-700">Or use existing tab:</p>
                   
                   <div className="max-h-64 overflow-y-auto space-y-2 pr-2">
                     {existingViews.slice(0, 5).map((view) => (
@@ -282,8 +285,8 @@ export default function CreateViewDialog({
               <Card className="bg-blue-50 border-blue-200">
                 <CardContent className="pt-4">
                   <p className="text-sm text-blue-900">
-                    <strong>💡 Tip:</strong> Copying from an existing view preserves its 
-                    columns, filters, and layout settings.
+                    <strong>💡 Tip:</strong> Copying from an existing tab preserves its 
+                    columns, filters, and layout settings. Filters will be saved in the new view.
                   </p>
                 </CardContent>
               </Card>
@@ -320,11 +323,11 @@ export default function CreateViewDialog({
                     <span className="text-sm font-medium">{viewName}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-neutral-600">Template:</span>
+                    <span className="text-sm text-neutral-600">Starting Point:</span>
                     <span className="text-sm font-medium">
                       {selectedTemplate === 'blank' 
                         ? 'Blank View' 
-                        : existingViews.find(v => v.id === selectedTemplate)?.name
+                        : existingViews.find(v => v.id === selectedTemplate)?.name || 'Existing Tab'
                       }
                     </span>
                   </div>
