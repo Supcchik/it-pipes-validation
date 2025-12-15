@@ -1089,3 +1089,4 @@ Complete multi-step report generation with:
 - ✅ Professional UI
 
 Ready to replace that old simple dialog! 🚀
+

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, use, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
   Play, 
@@ -45,9 +45,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 export default function InspectionPage() {
-  const params = useParams();
   const router = useRouter();
-  const inspectionId = params.id as string;
+  // Use useParams with React.use() to unwrap the promise and destructure immediately
+  // This avoids React DevTools trying to enumerate the params object
+  const { id } = use(useParams());
+  const inspectionId = String(id || '');
   
   // TODO: В майбутньому використовувати inspectionId для завантаження даних
   // Поки що використовуємо захардкоджені дані для PoC

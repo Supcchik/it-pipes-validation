@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, X, GripVertical, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -15,321 +15,419 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import type { FilterGroup, FilterCondition, ComplexFilter } from '@/lib/types/asset-list';
+import type { AdvancedFilterState, AdvancedGroup, ConditionWithOperator, FilterConfig } from '@/lib/types/asset-list';
 import { mockColumnDefs } from '@/lib/mock-data/asset-list';
+import { buildAdvancedFilterPreview } from '@/lib/utils/filter-utils';
 
 interface AdvancedFiltersDialogProps {
   open: boolean;
   onClose: () => void;
-  onApply: (filter: ComplexFilter) => void;
-  initialFilter?: ComplexFilter;
+  initialState?: AdvancedFilterState;
+  onApply: (state: AdvancedFilterState) => void;
 }
 
 export default function AdvancedFiltersDialog({
   open,
   onClose,
-  onApply,
-  initialFilter
+  initialState,
+  onApply
 }: AdvancedFiltersDialogProps) {
-  // Initialize with one empty group if no initial filter
-  const [groups, setGroups] = useState<FilterGroup[]>(
-    initialFilter?.groups || [
-      {
-        id: `group-${Date.now()}`,
-        conditions: [],
-        operator: 'AND'
-      }
-    ]
-  );
-  const [groupOperator, setGroupOperator] = useState<'AND' | 'OR'>(
-    initialFilter?.groupOperator || 'OR'
-  );
+  const [state, setState] = useState<AdvancedFilterState>({
+    type: 'advanced',
+    groups: [],
+  });
 
-  // Add new group
-  const handleAddGroup = () => {
-    setGroups([...groups, {
-      id: `group-${Date.now()}`,
-      conditions: [],
-      operator: 'AND'
-    }]);
+  // Синхронізуємо локальний стейт при відкритті
+  useEffect(() => {
+    if (!open) return;
+
+    if (initialState && initialState.groups && initialState.groups.length > 0) {
+      // Глибока копія, щоб не мутувати пропси
+      setState({
+        type: 'advanced',
+        groups: initialState.groups.map((g) => ({
+          id: g.id,
+          name: g.name,
+          conditions: g.conditions.map((c) => ({ ...c })),
+        })),
+      });
+    } else {
+      setState({
+        type: 'advanced',
+        groups: [
+          {
+            id: `group-${Date.now()}`,
+            name: 'Group 1',
+            conditions: [],
+          },
+        ],
+      });
+    }
+  }, [open, initialState]);
+
+  const groups = state.groups || [];
+
+  const getFilterableColumns = () => mockColumnDefs.filter((col) => col.filterable);
+
+  const getFieldType = (fieldId: string, table: string): string => {
+    const col = mockColumnDefs.find((c) => c.id === fieldId && c.table === table);
+    return col?.type || 'text';
   };
 
-  // Delete group
-  const handleDeleteGroup = (groupId: string) => {
-    if (groups.length === 1) {
-      // Keep at least one group, just clear conditions
-      setGroups([{
-        id: groups[0].id,
-        conditions: [],
-        operator: 'AND'
-      }]);
-    } else {
-      setGroups(groups.filter(g => g.id !== groupId));
+  const getOperatorsForField = (fieldType: string): FilterConfig['operator'][] => {
+    switch (fieldType) {
+      case 'text':
+        return ['equals', 'contains', 'startsWith'];
+      case 'number':
+      case 'date':
+        return ['equals', 'greaterThan', 'lessThan'];
+      case 'select':
+      case 'boolean':
+        return ['equals'];
+      default:
+        return ['equals', 'contains'];
     }
   };
 
-  // Add condition to group
+  const updateState = (nextGroups: AdvancedGroup[]) => {
+    setState({
+      type: 'advanced',
+      groups: nextGroups,
+    });
+  };
+
+  const handleAddGroup = () => {
+    const index = groups.length;
+    const name = `Group ${index + 1}`;
+    const newGroup: AdvancedGroup = {
+      id: `group-${Date.now()}`,
+      name,
+      conditions: [],
+    };
+    updateState([...groups, newGroup]);
+  };
+
+  const handleDeleteGroup = (groupId: string) => {
+    if (groups.length === 1) {
+      // Не видаляємо останню групу, лише очищаємо умови
+      const only = groups[0];
+      const cleared: AdvancedGroup = { ...only, conditions: [] };
+      updateState([cleared]);
+      return;
+    }
+    updateState(groups.filter((g) => g.id !== groupId));
+  };
+
   const handleAddCondition = (groupId: string) => {
-    setGroups(groups.map(group => {
-      if (group.id === groupId) {
-        return {
-          ...group,
-          conditions: [...group.conditions, {
-            id: `condition-${Date.now()}`,
-            field: '',
-            operator: 'equals',
-            value: ''
-          }]
+    const defaultColumn = getFilterableColumns()[0];
+    const baseField = defaultColumn?.field || 'pipeSegment';
+    const baseTable = (defaultColumn?.table as FilterConfig['table']) || 'asset';
+    const fieldType = getFieldType(baseField, baseTable);
+    const operators = getOperatorsForField(fieldType);
+
+    const newCondition: ConditionWithOperator = {
+      id: `cond-${Date.now()}`,
+      field: baseField,
+      operator: operators[0],
+      value: '',
+      table: baseTable,
+      nextOperator: undefined,
+    };
+
+    const nextGroups = groups.map((g) => {
+      if (g.id !== groupId) return g;
+
+      const conds = [...g.conditions, newCondition];
+      // Виставляємо nextOperator попередньої умови як AND за замовчуванням
+      if (conds.length > 1) {
+        const prevIndex = conds.length - 2;
+        conds[prevIndex] = {
+          ...conds[prevIndex],
+          nextOperator: conds[prevIndex].nextOperator || 'AND',
         };
       }
-      return group;
-    }));
+
+      return { ...g, conditions: conds };
+    });
+
+    updateState(nextGroups);
   };
 
-  // Delete condition from group
   const handleDeleteCondition = (groupId: string, conditionId: string) => {
-    setGroups(groups.map(group => {
-      if (group.id === groupId) {
-        return {
-          ...group,
-          conditions: group.conditions.filter(c => c.id !== conditionId)
-        };
+    const nextGroups = groups.map((g) => {
+      if (g.id !== groupId) return g;
+      const conds = g.conditions.filter((c) => c.id !== conditionId);
+
+      // Якщо після видалення лишається хоча б 2 умови — оновлюємо nextOperator передостанньої
+      if (conds.length >= 2) {
+        const lastIdx = conds.length - 1;
+        conds[lastIdx].nextOperator = undefined;
+      } else if (conds.length === 1) {
+        conds[0].nextOperator = undefined;
       }
-      return group;
-    }));
+
+      return { ...g, conditions: conds };
+    });
+
+    updateState(nextGroups);
   };
 
-  // Update condition
   const handleUpdateCondition = (
     groupId: string,
     conditionId: string,
-    updates: Partial<FilterCondition>
+    updates: Partial<ConditionWithOperator>
   ) => {
-    setGroups(groups.map(group => {
-      if (group.id === groupId) {
-        return {
-          ...group,
-          conditions: group.conditions.map(c =>
-            c.id === conditionId ? { ...c, ...updates } : c
-          )
-        };
-      }
-      return group;
-    }));
+    const nextGroups = groups.map((g) => {
+      if (g.id !== groupId) return g;
+      const conds = g.conditions.map((c) =>
+        c.id === conditionId ? { ...c, ...updates } : c
+      );
+      return { ...g, conditions: conds };
+    });
+    updateState(nextGroups);
   };
 
-  // Update group operator
-  const handleUpdateGroupOperator = (groupId: string, operator: 'AND' | 'OR') => {
-    setGroups(groups.map(group =>
-      group.id === groupId ? { ...group, operator } : group
-    ));
+  const handleUpdateLinkOperator = (groupId: string, conditionId: string, op: 'AND' | 'OR') => {
+    const nextGroups = groups.map((g) => {
+      if (g.id !== groupId) return g;
+      const conds = g.conditions.map((c) =>
+        c.id === conditionId ? { ...c, nextOperator: op } : c
+      );
+      return { ...g, conditions: conds };
+    });
+    updateState(nextGroups);
   };
 
-  // Get editable columns
-  const editableColumns = mockColumnDefs.filter(col =>
-    col.table === 'asset' &&
-    col.field !== 'id' &&
-    col.field !== 'pipeSegment'
-  );
-
-  // Apply filters
   const handleApply = () => {
-    // Filter out empty groups and conditions
-    const validGroups = groups
-      .map(group => ({
-        ...group,
-        conditions: group.conditions.filter(c => c.field && c.value !== '')
-      }))
-      .filter(group => group.conditions.length > 0);
+    // Очищаємо порожні умови та групи
+    const cleanedGroups: AdvancedGroup[] = groups
+      .map((g) => {
+        const conds = g.conditions.filter((c) => c.field && c.value !== '');
+        return { ...g, conditions: conds };
+      })
+      .filter((g) => g.conditions.length > 0);
 
-    if (validGroups.length === 0) {
+    if (cleanedGroups.length === 0) {
       onClose();
       return;
     }
 
     onApply({
-      groups: validGroups,
-      groupOperator
+      type: 'advanced',
+      groups: cleanedGroups,
     });
     onClose();
   };
 
-  const getGroupColor = (index: number): string => {
-    const colors = [
-      'bg-blue-50 border-blue-200',
-      'bg-green-50 border-green-200',
-      'bg-yellow-50 border-yellow-200',
-      'bg-purple-50 border-purple-200',
-      'bg-pink-50 border-pink-200'
-    ];
-    return colors[index % colors.length];
-  };
+  const previewText = buildAdvancedFilterPreview(state);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Advanced Filters</DialogTitle>
+          <DialogTitle>Advanced Filter Builder</DialogTitle>
           <p className="text-sm text-neutral-600 mt-2">
-            Create grouped filter conditions with AND/OR logic
+            Build complex AND/OR logic within groups. Groups are combined with OR.
           </p>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto py-4 space-y-4">
           {groups.map((group, groupIndex) => (
-            <div key={group.id} className="space-y-3">
-              {/* Group Header */}
-              <div className={`flex items-center justify-between p-3 rounded-lg border-2 ${getGroupColor(groupIndex)}`}>
-                <div className="flex items-center gap-3">
-                  <GripVertical className="w-5 h-5 text-neutral-400" />
-                  <Label className="text-sm font-semibold">
-                    Group {groupIndex + 1}
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <RadioGroup
-                      value={group.operator}
-                      onValueChange={(val: 'AND' | 'OR') => handleUpdateGroupOperator(group.id, val)}
-                      className="flex-row gap-4"
-                    >
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="AND" id={`${group.id}-and`} />
-                        <Label htmlFor={`${group.id}-and`} className="text-xs cursor-pointer">AND</Label>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="OR" id={`${group.id}-or`} />
-                        <Label htmlFor={`${group.id}-or`} className="text-xs cursor-pointer">OR</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
+            <Card key={group.id} className="border-2 border-blue-200 bg-blue-50">
+              <CardHeader className="flex flex-row items-center justify-between py-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-neutral-900">
+                    {group.name || `Group ${groupIndex + 1}`}
+                  </span>
                 </div>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-7 w-7"
                   onClick={() => handleDeleteGroup(group.id)}
                   aria-label="Delete group"
                 >
-                  <Trash2 className="h-4 w-4 text-red-600" />
+                  <X className="h-4 w-4 text-red-600" />
                 </Button>
-              </div>
-
-              {/* Conditions in Group */}
-              <div className="space-y-2 pl-8">
+              </CardHeader>
+              <CardContent className="space-y-3">
                 {group.conditions.length === 0 ? (
-                  <div className="text-sm text-neutral-500 italic py-2">
-                    No conditions yet. Click &quot;+ Add Condition&quot; to start.
-                  </div>
+                  <p className="text-xs text-neutral-600">
+                    No conditions yet. Add at least one condition to this group.
+                  </p>
                 ) : (
-                  group.conditions.map((condition, conditionIndex) => (
-                    <div key={condition.id} className="flex items-center gap-2">
-                      {conditionIndex > 0 && (
-                        <span className="text-xs font-medium text-neutral-500 w-12 text-center">
-                          {group.operator}
-                        </span>
-                      )}
-                      <div className="flex-1 flex items-center gap-2 bg-white p-2 rounded border border-neutral-200">
-                        {/* Field */}
-                        <Select
-                          value={condition.field}
-                          onValueChange={(value) => handleUpdateCondition(group.id, condition.id, { field: value })}
-                        >
-                          <SelectTrigger className="w-40">
-                            <SelectValue placeholder="Field..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {editableColumns.map(col => (
-                              <SelectItem key={col.id} value={col.field}>
-                                {col.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                  group.conditions.map((condition, index) => {
+                    const col = getFilterableColumns().find(
+                      (c) => c.field === condition.field && c.table === condition.table
+                    );
+                    const fieldType = col?.type || getFieldType(condition.field, condition.table);
+                    const operators = getOperatorsForField(fieldType);
 
-                        {/* Operator */}
-                        <Select
-                          value={condition.operator}
-                          onValueChange={(value: FilterCondition['operator']) =>
-                            handleUpdateCondition(group.id, condition.id, { operator: value })
-                          }
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="equals">=</SelectItem>
-                            <SelectItem value="contains">Contains</SelectItem>
-                            <SelectItem value="startsWith">Starts with</SelectItem>
-                            <SelectItem value="greaterThan">&gt;</SelectItem>
-                            <SelectItem value="lessThan">&lt;</SelectItem>
-                          </SelectContent>
-                        </Select>
+                    return (
+                      <div key={condition.id} className="space-y-1">
+                        {index > 0 && (
+                          <div className="flex items-center gap-3 pl-1">
+                            <span className="text-[11px] text-neutral-600">Link with next:</span>
+                            <RadioGroup
+                              value={group.conditions[index - 1].nextOperator || 'AND'}
+                              onValueChange={(val: 'AND' | 'OR') =>
+                                handleUpdateLinkOperator(group.id, group.conditions[index - 1].id, val)
+                              }
+                              className="flex flex-row gap-3"
+                            >
+                              <div className="flex items-center gap-1">
+                                <RadioGroupItem value="AND" id={`${group.id}-${index}-and`} />
+                                <Label
+                                  htmlFor={`${group.id}-${index}-and`}
+                                  className="text-[11px] cursor-pointer"
+                                >
+                                  AND
+                                </Label>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <RadioGroupItem value="OR" id={`${group.id}-${index}-or`} />
+                                <Label
+                                  htmlFor={`${group.id}-${index}-or`}
+                                  className="text-[11px] cursor-pointer"
+                                >
+                                  OR
+                                </Label>
+                              </div>
+                            </RadioGroup>
+                          </div>
+                        )}
 
-                        {/* Value */}
-                        <Input
-                          value={String(condition.value || '')}
-                          onChange={(e) => handleUpdateCondition(group.id, condition.id, { value: e.target.value })}
-                          placeholder="Value..."
-                          className="flex-1"
-                        />
+                        <div className="flex items-center gap-2 bg-white p-2 rounded border border-neutral-200">
+                          {/* Field */}
+                          <Select
+                            value={`${condition.table}:${condition.field}`}
+                            onValueChange={(value) => {
+                              const [table, field] = value.split(':');
+                              const newFieldType = getFieldType(field, table);
+                              const newOps = getOperatorsForField(newFieldType);
+                              handleUpdateCondition(group.id, condition.id, {
+                                field,
+                                table: table as FilterConfig['table'],
+                                operator: newOps.includes(condition.operator)
+                                  ? condition.operator
+                                  : newOps[0],
+                                value: '',
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="w-40 h-8 text-xs">
+                              <SelectValue placeholder="Field" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {getFilterableColumns().map((c) => (
+                                <SelectItem
+                                  key={`${c.table}:${c.id}`}
+                                  value={`${c.table}:${c.id}`}
+                                >
+                                  {c.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
 
-                        {/* Delete */}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleDeleteCondition(group.id, condition.id)}
-                          aria-label="Delete condition"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                          {/* Operator */}
+                          <Select
+                            value={condition.operator}
+                            onValueChange={(value) =>
+                              handleUpdateCondition(group.id, condition.id, {
+                                operator: value as FilterConfig['operator'],
+                              })
+                            }
+                          >
+                            <SelectTrigger className="w-28 h-8 text-xs">
+                              <SelectValue placeholder="Op" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {operators.map((op) => (
+                                <SelectItem key={op} value={op}>
+                                  {op}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Value */}
+                          <Input
+                            type={
+                              fieldType === 'number'
+                                ? 'number'
+                                : fieldType === 'date'
+                                ? 'date'
+                                : 'text'
+                            }
+                            value={
+                              typeof condition.value === 'string' ||
+                              typeof condition.value === 'number'
+                                ? String(condition.value)
+                                : ''
+                            }
+                            onChange={(e) => {
+                              const val =
+                                fieldType === 'number'
+                                  ? e.target.value === ''
+                                    ? ''
+                                    : Number(e.target.value)
+                                  : e.target.value;
+                              handleUpdateCondition(group.id, condition.id, { value: val });
+                            }}
+                            className="flex-1 h-8 text-xs"
+                            placeholder="Value"
+                          />
+
+                          {/* Delete */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleDeleteCondition(group.id, condition.id)}
+                            aria-label="Delete condition"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
 
-                {/* Add Condition Button */}
                 <Button
                   variant="outline"
                   size="sm"
+                  className="w-full mt-2"
                   onClick={() => handleAddCondition(group.id)}
-                  className="ml-12"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Condition
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add condition
                 </Button>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
 
-          {/* Between Groups Operator */}
-          {groups.length > 1 && (
-            <div className="flex items-center justify-center py-2">
-              <RadioGroup
-                value={groupOperator}
-                onValueChange={(val: 'AND' | 'OR') => setGroupOperator(val)}
-                className="flex-row gap-4"
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="AND" id="group-and" />
-                  <Label htmlFor="group-and" className="text-sm font-medium cursor-pointer">AND</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="OR" id="group-or" />
-                  <Label htmlFor="group-or" className="text-sm font-medium cursor-pointer">OR</Label>
-                </div>
-              </RadioGroup>
-            </div>
-          )}
-
-          {/* Add Group Button */}
           <Button
             variant="outline"
             onClick={handleAddGroup}
             className="w-full"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Add Group
+            Add group
           </Button>
+
+          {/* Preview */}
+          <Card className="border-neutral-200 bg-neutral-50 mt-2">
+            <CardHeader className="py-2">
+              <span className="text-xs font-semibold text-neutral-700">Preview</span>
+            </CardHeader>
+            <CardContent className="py-2">
+              <pre className="text-xs text-neutral-800 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                {previewText}
+              </pre>
+            </CardContent>
+          </Card>
         </div>
 
         <DialogFooter>
@@ -337,7 +435,7 @@ export default function AdvancedFiltersDialog({
             Cancel
           </Button>
           <Button onClick={handleApply}>
-            Apply Filters
+            Apply Advanced Filter
           </Button>
         </DialogFooter>
       </DialogContent>

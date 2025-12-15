@@ -54,3 +54,5 @@ export function calculatePipeLength(coordinates: [number, number][]): number {
 
   return totalLength;
 }
+
+

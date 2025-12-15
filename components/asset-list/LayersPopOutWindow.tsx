@@ -167,3 +167,5 @@ export default function LayersPopOutWindow({
 
   return null; // This component doesn't render anything in the main window
 }
+
+

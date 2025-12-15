@@ -27,9 +27,11 @@ import ExportProjectDialog from '@/components/asset-list/ExportProjectDialog';
 import MoveToProjectDialog from '@/components/asset-list/MoveToProjectDialog';
 import CopyToProjectDialog from '@/components/asset-list/CopyToProjectDialog';
 import DeleteConfirmDialog from '@/components/asset-list/DeleteConfirmDialog';
+import RemoveFilterConfirmDialog from '@/components/asset-list/RemoveFilterConfirmDialog';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
 import type { View, Asset, ColumnDef, FilterConfig } from '@/lib/types/asset-list';
+import { normalizeFilters, applyFilters } from '@/lib/utils/filter-utils';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
 
 export default function AssetListPage() {
@@ -71,6 +73,9 @@ export default function AssetListPage() {
   const [viewSettingsOpen, setViewSettingsOpen] = useState(false);
   const [viewSettingsDefaultTab, setViewSettingsDefaultTab] = useState<'columns' | 'filters'>('columns');
   const [searchOpen, setSearchOpen] = useState(false);
+  // Filter removal confirmation
+  const [removeFilterConfirmOpen, setRemoveFilterConfirmOpen] = useState(false);
+  const [filterToRemove, setFilterToRemove] = useState<{ type: 'group' | 'advanced'; groupId?: string; groupName?: string } | null>(null);
   const [findReplaceOpen, setFindReplaceOpen] = useState(false);
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [manageViewsOpen, setManageViewsOpen] = useState(false);
@@ -125,7 +130,7 @@ export default function AssetListPage() {
     return views[0];
   }, [views, activeViewId]);
 
-  // Filter assets based on simple search, active view filters and advanced search query
+  // Filter assets based on simple search, active view filters (normalized) and advanced search query
   const filteredAssets = useMemo(() => {
     // Start with simple search results (or all assets if no simple search active)
     // simpleSearchResults === null means no search active, use all assets
@@ -147,72 +152,9 @@ export default function AssetListPage() {
       return filtered;
     }
 
-    // Helper function to apply a single filter
-    const applyFilter = (asset: Asset, filter: FilterConfig): boolean => {
-      // Get value based on table type
-      let value: unknown;
-      
-      if (filter.table === 'asset') {
-        value = (asset as unknown as Record<string, unknown>)[filter.field];
-      } else if (filter.table === 'inspection' && asset.latestInspection) {
-        value = (asset.latestInspection as unknown as Record<string, unknown>)[filter.field];
-      } else if (filter.table === 'observation') {
-        if (filter.field === 'observationCount') {
-          value = asset.observationCount;
-        } else if (filter.field === 'hasDefects') {
-          value = asset.hasDefects;
-        } else if (filter.field === 'maxGrade') {
-          value = asset.maxGrade;
-        } else {
-          value = undefined;
-        }
-      } else {
-        // If inspection/observation field but no data, filter out
-        return false;
-      }
-
-      // Handle null/undefined values
-      if (value === null || value === undefined) {
-        return false;
-      }
-
-      // Apply operator
-      switch (filter.operator) {
-        case 'equals':
-          // For boolean, compare directly
-          if (typeof value === 'boolean' || typeof filter.value === 'boolean') {
-            return value === filter.value;
-          }
-          // For numbers, compare as numbers
-          if (typeof value === 'number' || typeof filter.value === 'number') {
-            return Number(value) === Number(filter.value);
-          }
-          // For strings, case-insensitive comparison
-          return String(value).toLowerCase() === String(filter.value).toLowerCase();
-        
-        case 'contains':
-          return String(value).toLowerCase().includes(String(filter.value).toLowerCase());
-        
-        case 'startsWith':
-          return String(value).toLowerCase().startsWith(String(filter.value).toLowerCase());
-        
-        case 'greaterThan':
-          return Number(value) > Number(filter.value);
-        
-        case 'lessThan':
-          return Number(value) < Number(filter.value);
-        
-        default:
-          return true;
-      }
-    };
-
-    // Apply view filters (from saved view)
-    if (activeView.filters && activeView.filters.length > 0) {
-      activeView.filters.forEach(filter => {
-        filtered = filtered.filter(asset => applyFilter(asset, filter));
-      });
-    }
+    // Apply normalized view filters (simple / groups / advanced)
+    const normalized = normalizeFilters(activeView);
+    filtered = applyFilters(filtered, normalized);
 
     // Apply temporary filters (on top of view filters)
     if (temporaryFilters.length > 0) {
@@ -442,7 +384,7 @@ export default function AssetListPage() {
     ));
   };
 
-  // Handle remove filter
+  // Handle remove filter (legacy)
   const handleRemoveFilter = (filterId: string) => {
     if (!activeView) return;
     
@@ -456,6 +398,89 @@ export default function AssetListPage() {
     setViews(views.map(v => 
       v.id === activeView.id ? updatedView : v
     ));
+  };
+
+  // Handle remove Simple filter (from simpleFilters)
+  const handleRemoveSimpleFilter = (filterId: string) => {
+    if (!activeView) return;
+    
+    const currentSimpleFilters = activeView.simpleFilters?.conditions || activeView.filters || [];
+    const updatedFilters = currentSimpleFilters.filter(f => f.id !== filterId);
+    
+    const updatedView: View = {
+      ...activeView,
+      simpleFilters: {
+        type: 'simple',
+        conditions: updatedFilters,
+      },
+      filters: updatedFilters, // Для backward compatibility
+      updatedAt: new Date().toISOString().split('T')[0]
+    };
+    
+    setViews(views.map(v => 
+      v.id === activeView.id ? updatedView : v
+    ));
+  };
+
+  // Handle remove Filter Set (group) - показуємо модалку підтвердження
+  const handleRemoveGroupFilter = (groupId: string) => {
+    if (!activeView || !activeView.groupFilters) return;
+    
+    const group = activeView.groupFilters.groups.find(g => g.id === groupId);
+    setFilterToRemove({
+      type: 'group',
+      groupId,
+      groupName: group?.name || undefined,
+    });
+    setRemoveFilterConfirmOpen(true);
+  };
+
+  // Підтверджене видалення Filter Set
+  const handleConfirmRemoveGroupFilter = () => {
+    if (!activeView || !activeView.groupFilters || !filterToRemove || filterToRemove.type !== 'group' || !filterToRemove.groupId) return;
+    
+    const updatedGroups = activeView.groupFilters.groups.filter(g => g.id !== filterToRemove.groupId);
+    
+    const updatedView: View = {
+      ...activeView,
+      groupFilters: updatedGroups.length > 0
+        ? { type: 'groups', groups: updatedGroups }
+        : null,
+      // НЕ перемикаємо на simple mode - залишаємо groups mode навіть якщо порожньо
+      updatedAt: new Date().toISOString().split('T')[0]
+    };
+    
+    setViews(views.map(v => 
+      v.id === activeView.id ? updatedView : v
+    ));
+    
+    setFilterToRemove(null);
+  };
+
+  // Handle remove Advanced filter - показуємо модалку підтвердження
+  const handleRemoveAdvancedFilter = () => {
+    if (!activeView) return;
+    
+    setFilterToRemove({ type: 'advanced' });
+    setRemoveFilterConfirmOpen(true);
+  };
+
+  // Підтверджене видалення Advanced filter
+  const handleConfirmRemoveAdvancedFilter = () => {
+    if (!activeView || !filterToRemove || filterToRemove.type !== 'advanced') return;
+    
+    const updatedView: View = {
+      ...activeView,
+      advancedFilters: null,
+      // НЕ перемикаємо на simple mode - залишаємо advanced mode
+      updatedAt: new Date().toISOString().split('T')[0]
+    };
+    
+    setViews(views.map(v => 
+      v.id === activeView.id ? updatedView : v
+    ));
+    
+    setFilterToRemove(null);
   };
 
   const handleSearch = (query: SearchQuery) => {
@@ -898,11 +923,17 @@ export default function AssetListPage() {
         />
 
         <ActiveFiltersBar
-          viewFilters={activeView?.filters || []}
+          filterMode={activeView?.filterMode}
+          simpleFilters={activeView?.simpleFilters?.conditions || activeView?.filters || []}
+          groupFilters={activeView?.groupFilters}
+          advancedFilters={activeView?.advancedFilters}
           temporaryFilters={temporaryFilters}
           onRemoveTemporaryFilter={(filterId) => {
             setTemporaryFilters(prev => prev.filter(f => f.id !== filterId));
           }}
+          onRemoveSimpleFilter={handleRemoveSimpleFilter}
+          onRemoveGroupFilter={handleRemoveGroupFilter}
+          onRemoveAdvancedFilter={handleRemoveAdvancedFilter}
           onOpenViewSettings={() => setViewSettingsOpen(true)}
         />
       </div>
@@ -1194,6 +1225,28 @@ export default function AssetListPage() {
           }}
           onConfirm={handleConfirmDelete}
           selectedAssets={[assetToDelete]}
+        />
+      )}
+
+      {/* Remove Filter Confirmation Dialog */}
+      {filterToRemove && (
+        <RemoveFilterConfirmDialog
+          open={removeFilterConfirmOpen}
+          onClose={() => {
+            setRemoveFilterConfirmOpen(false);
+            setFilterToRemove(null);
+          }}
+          onConfirm={() => {
+            if (filterToRemove.type === 'group') {
+              handleConfirmRemoveGroupFilter();
+            } else if (filterToRemove.type === 'advanced') {
+              handleConfirmRemoveAdvancedFilter();
+            }
+            setRemoveFilterConfirmOpen(false);
+            setFilterToRemove(null);
+          }}
+          filterType={filterToRemove.type}
+          filterName={filterToRemove.groupName}
         />
       )}
 
