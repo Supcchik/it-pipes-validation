@@ -46,10 +46,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 export default function InspectionPage() {
   const router = useRouter();
-  // Use useParams with React.use() to unwrap the promise and destructure immediately
-  // This avoids React DevTools trying to enumerate the params object
-  const { id } = use(useParams());
-  const inspectionId = String(id || '');
+  // useParams() returns an object directly in Next.js 15, no need for use()
+  const params = useParams();
+  const inspectionId = String(params?.id || '');
   
   // TODO: В майбутньому використовувати inspectionId для завантаження даних
   // Поки що використовуємо захардкоджені дані для PoC

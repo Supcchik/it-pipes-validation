@@ -455,8 +455,10 @@ export default function MapPanel({
       setPanStart(null);
       
       // Convert pan offset to lat/lng offset and update center
-      const latOffset = -panOffset.y / (10000 * zoom);
-      const lngOffset = panOffset.x / (10000 * zoom);
+      // Invert signs: when dragging right, center moves left (negative lng)
+      // When dragging down, center moves up (positive lat)
+      const latOffset = panOffset.y / (10000 * zoom);
+      const lngOffset = -panOffset.x / (10000 * zoom);
       
       setCenter({
         lat: center.lat + latOffset,
