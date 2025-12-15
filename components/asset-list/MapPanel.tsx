@@ -22,6 +22,8 @@ interface MapPanelProps {
   onAssetSelect: (assetIds: string[]) => void;
   onMapClick?: () => void;
   filters?: FilterConfig[];
+  onPlotPointClick?: (observationId: string) => void;
+  onPipeClick?: (assetId: string) => void;
 }
 
 // Style constants
@@ -44,7 +46,9 @@ export default function MapPanel({
   selectedAssetIds = [],
   filteredAssetIds,
   onAssetSelect,
-  onMapClick
+  onMapClick,
+  onPlotPointClick,
+  onPipeClick
 }: MapPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,6 +60,7 @@ export default function MapPanel({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [clickedOnFeature, setClickedOnFeature] = useState(false); // Track if we clicked on a feature
   
   // Selection state
   const [selectionTool, setSelectionTool] = useState<'box' | null>(null);
@@ -77,6 +82,7 @@ export default function MapPanel({
   const [layers, setLayers] = useState({
     sewerLines: true,
     manholes: true,
+    heatMap: true, // Heat map overlay for selected assets
   });
   const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
   const [layersPopOutOpen, setLayersPopOutOpen] = useState(false);
@@ -192,31 +198,56 @@ export default function MapPanel({
         pipe.coordinates.map(c => [c.lat, c.lng] as [number, number])
       );
 
-      // Generate mock observations (based on observationCount)
+      // Generate mock observations with random distribution along pipe segment
+      // Create random distances with minimum spacing to avoid clustering
+      const minSpacing = Math.max(10, pipeLength / (asset.observationCount * 2)); // Minimum 10 feet or pipeLength / (count * 2)
+      const distances: number[] = [];
+      
+      // Generate random distances ensuring minimum spacing
       for (let i = 0; i < asset.observationCount; i++) {
-        const distance = (i + 1) * 12; // 12', 24', 36', etc.
+        let distance: number;
+        let attempts = 0;
+        const maxAttempts = 50;
+        
+        do {
+          // Random position along pipe, but avoid very start/end (first and last 5%)
+          const startBuffer = pipeLength * 0.05;
+          const endBuffer = pipeLength * 0.05;
+          const availableLength = pipeLength - startBuffer - endBuffer;
+          distance = startBuffer + Math.random() * availableLength;
+          attempts++;
+        } while (
+          attempts < maxAttempts &&
+          distances.some(d => Math.abs(d - distance) < minSpacing)
+        );
+        
+        distances.push(distance);
+      }
+      
+      // Sort distances to maintain order along pipe
+      distances.sort((a, b) => a - b);
+      
+      // Generate points at these random distances
+      distances.forEach((distance, i) => {
         const grade = Math.min(5, Math.max(0, Math.floor(Math.random() * 6))) as 0 | 1 | 2 | 3 | 4 | 5;
         
-        // Calculate position along pipe
-        const startCoords = pipe.coordinates[0];
-        const endCoords = pipe.coordinates[pipe.coordinates.length - 1];
+        // Calculate position along pipe using all coordinates
         const position = calculatePlotPosition(
-          startCoords,
-          endCoords,
+          pipe.coordinates,
           pipeLength,
           distance
         );
 
         points.push({
           id: `plot-${assetId}-${i}`,
-          distance,
+          distance: Math.round(distance),
           code: ['TBD', 'CRK', 'ROOT', 'SAGG', 'DEP'][i % 5],
           grade,
           lat: position.lat,
           lng: position.lng,
           observationId: `obs-${assetId}-${i}`
         });
-      }
+      });
     });
 
     setPlotPoints(points);
@@ -236,6 +267,201 @@ export default function MapPanel({
     return { x, y };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center, zoom, panOffset]);
+
+  // Draw heat map overlay for pipe segments with plot points
+  const drawHeatMapOverlay = useCallback((ctx: CanvasRenderingContext2D) => {
+    if (!layers.heatMap) {
+      console.log('Heat map disabled');
+      return;
+    }
+    if (plotPoints.length === 0) {
+      console.log('No plot points');
+      return;
+    }
+
+    // Use all plot points (not just selected) for heat map
+    // This shows heat map for all assets that have observations
+    const allPlotPoints = plotPoints.filter(p => visibleGrades.includes(p.grade));
+    
+    console.log('Heat map - plot points:', plotPoints.length, 'filtered:', allPlotPoints.length);
+    
+    if (allPlotPoints.length === 0) {
+      console.log('No plot points after filtering');
+      return;
+    }
+
+    // Group plot points by pipe segment
+    const pointsByPipe = new Map<string, typeof plotPoints>();
+    allPlotPoints.forEach(point => {
+      const assetIdMatch = point.observationId.match(/^obs-(.+?)-/);
+      if (!assetIdMatch) return;
+      const assetId = assetIdMatch[1];
+      
+      if (!pointsByPipe.has(assetId)) {
+        pointsByPipe.set(assetId, []);
+      }
+      pointsByPipe.get(assetId)!.push(point);
+    });
+
+    // Draw heat map for each selected pipe segment
+    pointsByPipe.forEach((points, assetId) => {
+      const pipe = getPipeSegmentByAssetId(assetId);
+      if (!pipe || pipe.coordinates.length < 2) {
+        console.log('No pipe found for asset:', assetId);
+        return;
+      }
+      
+      console.log('Drawing heat map for asset:', assetId, 'points:', points.length);
+
+      // Calculate pipe length
+      const pipeLength = calculatePipeLength(
+        pipe.coordinates.map(c => [c.lat, c.lng] as [number, number])
+      );
+
+      // Create heat map segments along pipe
+      // Use more segments for smoother gradient
+      const segmentCount = Math.max(20, Math.min(100, Math.floor(pipeLength / 5))); // At least 20, max 100, or one per 5 feet
+      const segmentLength = pipeLength / segmentCount;
+
+      console.log('Pipe length:', pipeLength, 'Segment count:', segmentCount, 'Segment length:', segmentLength);
+      console.log('Plot points distances:', points.map(p => p.distance));
+
+      // Calculate heat intensity for each segment
+      const heatSegments: Array<{ distance: number; intensity: number; maxGrade: number }> = [];
+      
+      for (let i = 0; i < segmentCount; i++) {
+        const segmentStart = i * segmentLength;
+        const segmentEnd = (i + 1) * segmentLength;
+        const segmentCenter = (segmentStart + segmentEnd) / 2;
+
+        // Find points in this segment (with larger overlap for smooth transition)
+        const nearbyPoints = points.filter(p => {
+          const distance = Math.abs(p.distance - segmentCenter);
+          return distance < segmentLength * 2; // Larger overlap
+        });
+
+        if (nearbyPoints.length > 0) {
+          // Calculate weighted intensity based on distance and grade
+          let totalIntensity = 0;
+          let totalWeight = 0;
+          let maxGrade = 0;
+
+          nearbyPoints.forEach(point => {
+            const distance = Math.abs(point.distance - segmentCenter);
+            const weight = Math.max(0, 1 - (distance / (segmentLength * 2)));
+            // Higher grade = higher intensity
+            const intensity = (point.grade / 5) * weight;
+            totalIntensity += intensity;
+            totalWeight += weight;
+            maxGrade = Math.max(maxGrade, point.grade);
+          });
+
+          const avgIntensity = totalWeight > 0 ? totalIntensity / totalWeight : 0;
+          heatSegments.push({
+            distance: segmentCenter,
+            intensity: Math.min(1, avgIntensity),
+            maxGrade
+          });
+        } else if (i === 0 || i === segmentCount - 1) {
+          // Always add segments at start and end, even if no points nearby
+          // This ensures heat map covers the entire pipe
+          heatSegments.push({
+            distance: segmentCenter,
+            intensity: 0.1, // Low intensity for empty segments
+            maxGrade: 0
+          });
+        }
+      }
+      
+      console.log('Generated heat segments:', heatSegments.length);
+
+      // Draw heat map as a thick overlay along the entire pipe segment
+      console.log('Heat segments for asset', assetId, ':', heatSegments.length);
+      if (heatSegments.length > 0) {
+        console.log('Drawing heat map for', assetId, 'with', heatSegments.length, 'segments');
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        // Draw heat map along the entire pipe path with gradient
+        const heatMapWidth = 30; // Very thick to be clearly visible - increased from 25
+        
+        // Build the pipe path
+        const pipePath: { x: number; y: number; distance: number }[] = [];
+        let cumulativeDist = 0;
+        
+        pipe.coordinates.forEach((coord, index) => {
+          const xy = latLngToXY(coord.lat, coord.lng);
+          if (index > 0) {
+            const prevCoord = pipe.coordinates[index - 1];
+            const segmentDist = calculatePipeLength([
+              [prevCoord.lat, prevCoord.lng],
+              [coord.lat, coord.lng]
+            ]);
+            cumulativeDist += segmentDist;
+          }
+          pipePath.push({ x: xy.x, y: xy.y, distance: cumulativeDist });
+        });
+
+        // Draw heat map segments along the path
+        for (let i = 0; i < pipePath.length - 1; i++) {
+          const startPoint = pipePath[i];
+          const endPoint = pipePath[i + 1];
+          const segmentCenterDist = (startPoint.distance + endPoint.distance) / 2;
+          
+          // Find the dominant grade/color for this segment
+          let maxGrade = 0;
+          let maxIntensity = 0;
+          
+          heatSegments.forEach(segment => {
+            const distDiff = Math.abs(segment.distance - segmentCenterDist);
+            const influenceRadius = pipeLength * 0.15; // 15% of pipe length
+            if (distDiff < influenceRadius) {
+              const weight = 1 - (distDiff / influenceRadius);
+              if (segment.maxGrade > maxGrade || (segment.maxGrade === maxGrade && segment.intensity * weight > maxIntensity)) {
+                maxGrade = segment.maxGrade;
+                maxIntensity = segment.intensity * weight;
+              }
+            }
+          });
+          
+          // Get color based on max grade
+          let color: string;
+          if (maxGrade <= 1) color = '#10b981'; // Green
+          else if (maxGrade === 2) color = '#fbbf24'; // Yellow
+          else if (maxGrade === 3) color = '#f97316'; // Orange
+          else color = '#ef4444'; // Red
+          
+          // Calculate opacity based on intensity - make it very visible
+          const opacity = Math.max(0.9, 0.7 + (maxIntensity * 0.2));
+          
+          ctx.strokeStyle = color;
+          ctx.lineWidth = heatMapWidth;
+          ctx.globalAlpha = opacity;
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 6;
+          
+          ctx.beginPath();
+          ctx.moveTo(startPoint.x, startPoint.y);
+          ctx.lineTo(endPoint.x, endPoint.y);
+          ctx.stroke();
+          
+          // Debug: draw a test line to verify drawing works
+          if (i === 0) {
+            console.log('First heat map segment:', startPoint, endPoint, color, opacity);
+          }
+        }
+
+        ctx.shadowBlur = 0;
+        ctx.restore();
+        console.log('Finished drawing heat map for', assetId);
+      } else {
+        console.log('No heat segments to draw for', assetId);
+      }
+    });
+    
+    console.log('Heat map overlay complete, processed', pointsByPipe.size, 'pipes');
+  }, [layers.heatMap, plotPoints, visibleGrades, latLngToXY]);
 
   // Draw map
   const drawMap = useCallback(() => {
@@ -263,7 +489,7 @@ export default function MapPanel({
       ctx.stroke();
     }
 
-    // Draw pipe segments
+    // Draw pipe segments first
     if (layers.sewerLines) {
       MOCK_PIPE_SEGMENTS.forEach(pipe => {
         const isSelected = selectedAssetIds.includes(pipe.assetId);
@@ -317,6 +543,9 @@ export default function MapPanel({
       });
     }
 
+    // Draw heat map overlay (after pipe segments, before plot points)
+    drawHeatMapOverlay(ctx);
+
     // Draw plot points for selected assets
     const filteredPlotPoints = plotPoints.filter(p => visibleGrades.includes(p.grade));
     filteredPlotPoints.forEach(point => {
@@ -354,7 +583,7 @@ export default function MapPanel({
       ctx.strokeRect(selectionStart.x, selectionStart.y, width, height);
       ctx.setLineDash([]);
     }
-  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assets, plotPoints, visibleGrades, hoveredPlotPoint]);
+  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assets, plotPoints, visibleGrades, hoveredPlotPoint, drawHeatMapOverlay]);
 
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -378,11 +607,14 @@ export default function MapPanel({
       const pos = latLngToXY(point.lat, point.lng);
       const distance = Math.sqrt((x - pos.x) ** 2 + (y - pos.y) ** 2);
       if (distance <= 6) {
-        // Navigate to inspection at this observation
-        const asset = assets.find(a => selectedAssetIds.includes(a.id));
-        if (asset?.latestInspection) {
-          window.location.href = `/inspection/${asset.id}?observation=${point.observationId}`;
+        // Mark that we clicked on a feature to prevent onMapClick
+        setClickedOnFeature(true);
+        // Highlight snapshot in snapshots panel instead of navigating
+        if (onPlotPointClick) {
+          onPlotPointClick(point.observationId);
         }
+        // Reset flag after a short delay
+        setTimeout(() => setClickedOnFeature(false), 100);
         return;
       }
     }
@@ -390,14 +622,35 @@ export default function MapPanel({
     // Check for feature click
     const clickedFeature = detectFeatureAtPoint(x, y);
     if (clickedFeature) {
+      // Mark that we clicked on a feature to prevent onMapClick in handleMouseUp
+      setClickedOnFeature(true);
+      
+      // If clicked on pipe segment, trigger pipe click callback
+      if (clickedFeature.type === 'pipe' && onPipeClick) {
+        // Find assetId for this pipe
+        const pipe = MOCK_PIPE_SEGMENTS.find(p => p.id === clickedFeature.id);
+        if (pipe && pipe.assetId) {
+          onPipeClick(pipe.assetId);
+          // Reset flag after a short delay to allow state updates
+          setTimeout(() => setClickedOnFeature(false), 100);
+          return;
+        }
+      }
+      
+      // For manholes, show popup as before
       setClickedItem({
         type: clickedFeature.type,
         id: clickedFeature.id,
         position: { x: e.clientX, y: e.clientY },
       });
+      // Reset flag after a short delay
+      setTimeout(() => setClickedOnFeature(false), 100);
       return;
     }
 
+    // Not a feature click, reset flag
+    setClickedOnFeature(false);
+    
     // Start panning
     setIsPanning(true);
     setPanStart({ x, y });
@@ -475,10 +728,15 @@ export default function MapPanel({
       return;
     }
 
-    // If clicked on empty space (not panning, not selecting), call onMapClick
+    // If clicked on empty space (not panning, not selecting, not a feature), call onMapClick
     // But only for actual mouseup events, not mouseLeave
-    if (e && e.type === 'mouseup' && !clickedItem) {
+    if (e && e.type === 'mouseup' && !clickedItem && !clickedOnFeature) {
       onMapClick?.();
+    }
+    
+    // Reset feature click flag
+    if (!isPanning) {
+      setClickedOnFeature(false);
     }
   };
 
@@ -499,16 +757,49 @@ export default function MapPanel({
       }
     }
 
-    // Check pipes
+    // Check pipes - check distance to entire pipe line, not just midpoint
     for (const pipe of MOCK_PIPE_SEGMENTS) {
       if (!effectiveFilteredAssetIds.includes(pipe.assetId)) continue;
       
-      const midPoint = pipe.coordinates[Math.floor(pipe.coordinates.length / 2)];
-      const pos = latLngToXY(midPoint.lat, midPoint.lng);
-      const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
-      
-      if (distance <= 50) {
-        return { type: 'pipe', id: pipe.id };
+      // Check distance to each segment of the pipe
+      for (let i = 0; i < pipe.coordinates.length - 1; i++) {
+        const startCoord = pipe.coordinates[i];
+        const endCoord = pipe.coordinates[i + 1];
+        const startXY = latLngToXY(startCoord.lat, startCoord.lng);
+        const endXY = latLngToXY(endCoord.lat, endCoord.lng);
+        
+        // Calculate distance from point to line segment
+        const A = x - startXY.x;
+        const B = y - startXY.y;
+        const C = endXY.x - startXY.x;
+        const D = endXY.y - startXY.y;
+        
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        let param = -1;
+        if (lenSq !== 0) param = dot / lenSq;
+        
+        let xx: number, yy: number;
+        
+        if (param < 0) {
+          xx = startXY.x;
+          yy = startXY.y;
+        } else if (param > 1) {
+          xx = endXY.x;
+          yy = endXY.y;
+        } else {
+          xx = startXY.x + param * C;
+          yy = startXY.y + param * D;
+        }
+        
+        const dx = x - xx;
+        const dy = y - yy;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Clickable area: 15 pixels from the line
+        if (distance <= 15) {
+          return { type: 'pipe', id: pipe.id };
+        }
       }
     }
 
@@ -732,6 +1023,20 @@ export default function MapPanel({
               />
               <Label htmlFor="layer-manholes" className="text-sm font-medium cursor-pointer select-none">
                 Manholes_All
+              </Label>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="layer-heatmap"
+                checked={layers.heatMap}
+                onCheckedChange={(checked) =>
+                  setLayers({ ...layers, heatMap: checked as boolean })
+                }
+                className="h-4 w-4 rounded border-neutral-300"
+              />
+              <Label htmlFor="layer-heatmap" className="text-sm font-medium cursor-pointer select-none">
+                Heat Map (Grades)
               </Label>
             </div>
           </div>

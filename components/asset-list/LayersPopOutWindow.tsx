@@ -11,8 +11,9 @@ interface LayersPopOutWindowProps {
   layers: {
     sewerLines: boolean;
     manholes: boolean;
+    heatMap: boolean;
   };
-  onLayersChange: (layers: { sewerLines: boolean; manholes: boolean }) => void;
+  onLayersChange: (layers: { sewerLines: boolean; manholes: boolean; heatMap: boolean }) => void;
   onClose: () => void;
 }
 
@@ -108,6 +109,10 @@ export default function LayersPopOutWindow({
               <input type="checkbox" id="manholes" ${layers.manholes ? 'checked' : ''} />
               <label for="manholes" style="cursor: pointer;">Manholes_All</label>
             </div>
+            <div class="layer-item">
+              <input type="checkbox" id="heatmap" ${layers.heatMap ? 'checked' : ''} />
+              <label for="heatmap" style="cursor: pointer;">Heat Map (Grades)</label>
+            </div>
           </div>
           <script>
             const checkboxes = document.querySelectorAll('input[type="checkbox"]');
@@ -115,7 +120,8 @@ export default function LayersPopOutWindow({
               cb.addEventListener('change', () => {
                 const state = {
                   sewerLines: document.getElementById('sewer').checked,
-                  manholes: document.getElementById('manholes').checked
+                  manholes: document.getElementById('manholes').checked,
+                  heatMap: document.getElementById('heatmap').checked
                 };
                 window.opener.postMessage({
                   type: 'LAYERS_UPDATE',
@@ -167,5 +173,6 @@ export default function LayersPopOutWindow({
 
   return null; // This component doesn't render anything in the main window
 }
+
 
 

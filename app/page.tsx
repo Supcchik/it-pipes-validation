@@ -60,6 +60,7 @@ export default function AssetListPage() {
   const [simpleSearchResults, setSimpleSearchResults] = useState<Asset[] | null>(null); // НОВИЙ: null = no search, [] = no results, [assets] = results
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedAssetForSnapshots, setSelectedAssetForSnapshots] = useState<Asset | null>(null);
+  const [highlightedSnapshotId, setHighlightedSnapshotId] = useState<string | null>(null);
   const [temporaryFilters, setTemporaryFilters] = useState<FilterConfig[]>([]); // Temporary filters (not saved in view)
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState<SearchQuery | null>(null);
@@ -284,10 +285,12 @@ export default function AssetListPage() {
       const selectedAsset = filteredAssets.find(a => a.id === selectedRows[0]);
       if (selectedAsset) {
         setSelectedAssetForSnapshots(selectedAsset);
+        setHighlightedSnapshotId(null); // Reset highlight when selecting new asset
       }
     } else {
       // Multi-select or no selection: hide snapshots panel
       setSelectedAssetForSnapshots(null);
+      setHighlightedSnapshotId(null);
     }
   }, [selectedRows, filteredAssets]);
 
@@ -1014,6 +1017,37 @@ export default function AssetListPage() {
                       setSelectedRows([]);
                     }}
                     filters={activeView?.filters || []}
+                    onPlotPointClick={(observationId) => {
+                      // Highlight corresponding snapshot in snapshots panel
+                      // observationId format: obs-${assetId}-${i}
+                      // snapshotId format: snapshot-${assetId}-${i}
+                      const snapshotId = observationId.replace('obs-', 'snapshot-');
+                      setHighlightedSnapshotId(snapshotId);
+                      // Auto-scroll to highlighted snapshot after a short delay
+                      setTimeout(() => {
+                        const snapshotElement = document.querySelector(`[data-snapshot-id="${snapshotId}"]`);
+                        if (snapshotElement) {
+                          snapshotElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                        }
+                      }, 100);
+                    }}
+                    onPipeClick={(assetId) => {
+                      // Same behavior as clicking on row in table
+                      const asset = filteredAssets.find(a => a.id === assetId);
+                      if (asset) {
+                        handleRowClick(asset);
+                        // Scroll to row in table
+                        setTimeout(() => {
+                          const row = document.querySelector(`[data-asset-id="${assetId}"]`);
+                          if (row) {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Flash animation
+                            row.classList.add('flash-highlight');
+                            setTimeout(() => row.classList.remove('flash-highlight'), 1000);
+                          }
+                        }, 100);
+                      }
+                    }}
                   />
                 </div>
                 
@@ -1024,6 +1058,7 @@ export default function AssetListPage() {
                     onClose={() => {
                       setSelectedAssetForSnapshots(null);
                       setSelectedRows([]);
+                      setHighlightedSnapshotId(null);
                     }}
                     onSnapshotClick={(snapshotId) => {
                       // Navigate to inspection at specific observation
@@ -1031,6 +1066,7 @@ export default function AssetListPage() {
                         router.push(`/inspection/${selectedAssetForSnapshots.id}?observation=${snapshotId}`);
                       }
                     }}
+                    highlightedSnapshotId={highlightedSnapshotId}
                   />
                 )}
               </div>

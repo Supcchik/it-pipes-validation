@@ -22,6 +22,7 @@ interface SnapshotsPanelProps {
   asset: Asset | null;
   onClose: () => void;
   onSnapshotClick: (snapshotId: string) => void;
+  highlightedSnapshotId?: string | null;
 }
 
 // Mock snapshots data generator
@@ -61,7 +62,8 @@ function generateMockSnapshots(asset: Asset): SnapshotData[] {
 export default function SnapshotsPanel({
   asset,
   onClose,
-  onSnapshotClick
+  onSnapshotClick,
+  highlightedSnapshotId
 }: SnapshotsPanelProps) {
   const [visibleGrades, setVisibleGrades] = useState<number[]>([0, 1, 2, 3, 4, 5]);
 
@@ -153,13 +155,20 @@ export default function SnapshotsPanel({
           </div>
         ) : (
           <div className="flex gap-3 overflow-x-auto pb-2">
-            {filteredSnapshots.map(snapshot => (
+            {filteredSnapshots.map(snapshot => {
+              const isHighlighted = highlightedSnapshotId === snapshot.id;
+              return (
               <div
                 key={snapshot.id}
+                data-snapshot-id={snapshot.id}
                 className="flex-shrink-0 w-[130px] cursor-pointer group"
                 onClick={() => onSnapshotClick(snapshot.id)}
               >
-                <div className="bg-white rounded-lg overflow-hidden border-2 border-neutral-200 group-hover:border-orange-500 group-hover:shadow-md transition-all duration-200">
+                <div className={`bg-white rounded-lg overflow-hidden border-2 transition-all duration-200 ${
+                  isHighlighted 
+                    ? 'border-orange-500 shadow-lg ring-2 ring-orange-300' 
+                    : 'border-neutral-200 group-hover:border-orange-500 group-hover:shadow-md'
+                }`}>
                   {/* Thumbnail */}
                   <div className="relative w-full h-[100px] bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
                     <ImageIcon className="w-10 h-10 text-neutral-400" />
@@ -186,12 +195,14 @@ export default function SnapshotsPanel({
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>
     </div>
   );
 }
+
 
 
