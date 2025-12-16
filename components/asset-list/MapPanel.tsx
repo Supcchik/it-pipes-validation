@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Square, X, Search, MapPin, ChevronDownIcon } from 'lucide-react';
+import { Square, X, Search, MapPin, ChevronDownIcon, Settings, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import type { Asset, FilterConfig, PlotPoint } from '@/lib/types/asset-list';
 import { MOCK_MANHOLES, MOCK_PIPE_SEGMENTS, getPipeSegmentByAssetId } from '@/lib/mock-data/mockMapData';
 import { calculatePlotPosition, calculatePipeLength } from '@/lib/utils/map-utils';
@@ -62,6 +63,11 @@ export default function MapPanel({
   const [mapSearchQuery, setMapSearchQuery] = useState('');
   const [mapSearchResults, setMapSearchResults] = useState<NetworkAsset[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [displayOptions, setDisplayOptions] = useState({
+    showLabels: true,
+    showAssetIds: false,
+  });
   
   // Pan/drag state
   const [isPanning, setIsPanning] = useState(false);
@@ -523,6 +529,41 @@ export default function MapPanel({
         });
         ctx.stroke();
         ctx.globalAlpha = 1;
+
+        // Draw labels and asset IDs if enabled
+        if (displayOptions.showLabels || displayOptions.showAssetIds) {
+          // Find midpoint of pipe for label placement
+          const midIndex = Math.floor(pipe.coordinates.length / 2);
+          const midCoord = pipe.coordinates[midIndex];
+          const { x, y } = latLngToXY(midCoord.lat, midCoord.lng);
+          
+          ctx.save();
+          ctx.fillStyle = '#1F2937';
+          ctx.font = '11px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          let labelText = '';
+          if (displayOptions.showLabels) {
+            const asset = assets.find(a => a.id === pipe.assetId);
+            if (asset?.pipeSegment) {
+              labelText = asset.pipeSegment;
+            }
+          }
+          if (displayOptions.showAssetIds) {
+            if (labelText) labelText += ` (${pipe.assetId})`;
+            else labelText = pipe.assetId;
+          }
+          
+          if (labelText) {
+            // Draw text with white background for readability
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(x - ctx.measureText(labelText).width / 2 - 4, y - 8, ctx.measureText(labelText).width + 8, 16);
+            ctx.fillStyle = '#1F2937';
+            ctx.fillText(labelText, x, y);
+          }
+          ctx.restore();
+        }
       });
     }
 
@@ -553,6 +594,17 @@ export default function MapPanel({
         ctx.lineWidth = style.strokeWidth;
         ctx.stroke();
         ctx.globalAlpha = 1;
+
+        // Draw labels if enabled
+        if (displayOptions.showLabels) {
+          ctx.save();
+          ctx.fillStyle = '#1F2937';
+          ctx.font = '12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(manhole.name, x, y + radius + 4);
+          ctx.restore();
+        }
       });
     }
 
@@ -596,7 +648,7 @@ export default function MapPanel({
       ctx.strokeRect(selectionStart.x, selectionStart.y, width, height);
       ctx.setLineDash([]);
     }
-  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assets, plotPoints, visibleGrades, hoveredPlotPoint, drawHeatMapOverlay]);
+  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assets, plotPoints, visibleGrades, hoveredPlotPoint, drawHeatMapOverlay, displayOptions]);
 
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1045,17 +1097,16 @@ export default function MapPanel({
       aria-label="Asset map view"
       style={{ minWidth: 0, maxWidth: '100%' }}
     >
-      {/* Top Toolbar */}
-      <div className="h-14 px-4 py-2 bg-white border-b border-neutral-200 shadow-sm flex items-center gap-4 z-20 shrink-0 min-w-0 overflow-hidden">
-        {/* Map Search Input */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+      {/* Floating Search Pill - Top Left */}
+      <div className="absolute top-4 left-4 z-30">
+        <div className="relative w-[280px]">
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-neutral-400" />
           <Input
             value={mapSearchQuery}
             onChange={(e) => handleMapSearch(e.target.value)}
             onFocus={() => setShowSearchResults(mapSearchResults.length > 0)}
             placeholder="Search city network..."
-            className="pl-9 pr-9 h-10"
+            className="h-11 pl-11 pr-10 rounded-full bg-white shadow-md border-0 focus:border-2 focus:border-blue-600 focus:shadow-[0_4px_12px_rgba(59,130,246,0.25)] transition-all"
           />
           {mapSearchQuery && (
             <button
@@ -1072,7 +1123,7 @@ export default function MapPanel({
           
           {/* Search Results Dropdown */}
           {showSearchResults && mapSearchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 max-h-[300px] overflow-y-auto">
               {mapSearchResults.map(asset => (
                 <button
                   key={asset.id}
@@ -1095,77 +1146,178 @@ export default function MapPanel({
             </div>
           )}
         </div>
+      </div>
 
-        {/* Base Map Selector */}
-        <Select value={basemap} onValueChange={setBasemap}>
-          <SelectTrigger className="w-36 h-10">
-            <SelectValue>
-              <span className="text-sm">Base: {basemap.charAt(0).toUpperCase() + basemap.slice(1)}</span>
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="streets">Streets</SelectItem>
-            <SelectItem value="satellite">Satellite</SelectItem>
-            <SelectItem value="hybrid">Hybrid</SelectItem>
-            <SelectItem value="topo">Topographic</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Floating Settings Button - Top Right */}
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            className="absolute top-4 right-4 z-30 w-11 h-11 rounded-full bg-white shadow-md flex items-center justify-center hover:scale-105 transition-transform"
+            aria-label="Map settings"
+          >
+            <Settings className="h-5 w-5 text-neutral-700" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-80 p-0" align="end">
+          <div className="p-4 space-y-4">
+            {/* Base Map Section - Google Maps style buttons */}
+            <div>
+              <h3 className="text-sm font-medium text-neutral-700 mb-3">Base Map</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setBasemap('streets');
+                  }}
+                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                    basemap === 'streets'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
+                    🗺️
+            </div>
+                  <span className="text-xs font-medium text-neutral-700">Streets</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setBasemap('satellite');
+                  }}
+                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                    basemap === 'satellite'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
+                    🛰️
+          </div>
+                  <span className="text-xs font-medium text-neutral-700">Satellite</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setBasemap('hybrid');
+                  }}
+                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                    basemap === 'hybrid'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
+                    🗺️🛰️
+                  </div>
+                  <span className="text-xs font-medium text-neutral-700">Hybrid</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setBasemap('topo');
+                  }}
+                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
+                    basemap === 'topo'
+                      ? 'border-blue-600 bg-blue-50'
+                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
+                    ⛰️
+                  </div>
+                  <span className="text-xs font-medium text-neutral-700">Terrain</span>
+                </button>
+              </div>
+            </div>
 
-        {/* Layers Dropdown */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className="w-36 h-10 justify-between">
-              <span className="text-sm">Layers ({activeLayersCount})</span>
-              <ChevronDownIcon className="h-4 w-4 opacity-50" />
-              </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-60 p-0" align="start">
-            <div className="px-2 py-1.5 space-y-1">
-              <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded">
+            {/* Layers Section */}
+            <div>
+              <h3 className="text-sm font-medium text-neutral-700 mb-3">Layers</h3>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
               <Checkbox
-                  id="dropdown-layer-sewer"
+                    id="settings-layer-sewer"
                 checked={layers.sewerLines}
                 onCheckedChange={(checked) =>
                   setLayers({ ...layers, sewerLines: checked as boolean })
                 }
-                  className="h-4 w-4"
+                    className="h-5 w-5"
               />
-                <Label htmlFor="dropdown-layer-sewer" className="text-sm font-medium cursor-pointer select-none flex-1">
+                  <Label htmlFor="settings-layer-sewer" className="text-sm font-normal cursor-pointer">
                 SewerLines_All
               </Label>
             </div>
-            
-              <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded">
+                <div className="flex items-center space-x-2">
               <Checkbox
-                  id="dropdown-layer-manholes"
+                    id="settings-layer-manholes"
                 checked={layers.manholes}
                 onCheckedChange={(checked) =>
                   setLayers({ ...layers, manholes: checked as boolean })
                 }
-                  className="h-4 w-4"
+                    className="h-5 w-5"
               />
-                <Label htmlFor="dropdown-layer-manholes" className="text-sm font-medium cursor-pointer select-none flex-1">
+                  <Label htmlFor="settings-layer-manholes" className="text-sm font-normal cursor-pointer">
                 Manholes_All
               </Label>
             </div>
-              
-              <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded">
-                <Checkbox
-                  id="dropdown-layer-heatmap"
-                  checked={layers.heatMap}
-                  onCheckedChange={(checked) =>
-                    setLayers({ ...layers, heatMap: checked as boolean })
-                  }
-                  className="h-4 w-4"
-                />
-                <Label htmlFor="dropdown-layer-heatmap" className="text-sm font-medium cursor-pointer select-none flex-1">
-                  Heat Map (Grades)
-                </Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="settings-layer-heatmap"
+                    checked={layers.heatMap}
+                    onCheckedChange={(checked) =>
+                      setLayers({ ...layers, heatMap: checked as boolean })
+                    }
+                    className="h-5 w-5"
+                  />
+                  <Label htmlFor="settings-layer-heatmap" className="text-sm font-normal cursor-pointer">
+                    Heat Map (Grades)
+                  </Label>
           </div>
         </div>
-          </PopoverContent>
-        </Popover>
-      </div>
+        <Button
+                variant="ghost"
+                className="mt-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                onClick={() => {
+                  // TODO: Open add layer dialog
+                  console.log('Add layer clicked');
+                }}
+              >
+                + Add Layer
+        </Button>
+            </div>
+
+            {/* Display Section */}
+            <div>
+              <h3 className="text-sm font-medium text-neutral-700 mb-3">Display</h3>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="display-labels"
+                    checked={displayOptions.showLabels}
+                    onCheckedChange={(checked) =>
+                      setDisplayOptions({ ...displayOptions, showLabels: checked as boolean })
+                    }
+                    className="h-5 w-5"
+                  />
+                  <Label htmlFor="display-labels" className="text-sm font-normal cursor-pointer">
+                    Show labels
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="display-asset-ids"
+                    checked={displayOptions.showAssetIds}
+                    onCheckedChange={(checked) =>
+                      setDisplayOptions({ ...displayOptions, showAssetIds: checked as boolean })
+                    }
+                    className="h-5 w-5"
+                  />
+                  <Label htmlFor="display-asset-ids" className="text-sm font-normal cursor-pointer">
+                    Show asset IDs
+                  </Label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
 
       {/* Map Area - Canvas only */}
       <div ref={mapAreaRef} className="flex-1 relative min-h-0 overflow-hidden min-w-0" style={{ maxWidth: '100%' }}>
@@ -1187,133 +1339,76 @@ export default function MapPanel({
           className="w-full h-full"
           style={{ cursor: getCursorStyle(), maxWidth: '100%', display: 'block' }}
         />
-      </div>
 
-      {/* Bottom Control Bar - Outside canvas */}
-      <div className="h-12 bg-white border-t border-neutral-200 relative z-20 shrink-0 min-w-0 overflow-hidden">
-        {/* Wrapper using grid for predictable layout - ensure it never exceeds parent width */}
-        <div className="h-full grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-4 min-w-0 w-full" style={{ maxWidth: '100%', boxSizing: 'border-box' }}>
-        {/* Left: Status Chips */}
-        <div className="flex items-center gap-2 shrink-0 flex-shrink-0 min-w-0">
-          <div className="h-8 px-3 rounded-md bg-neutral-100 text-neutral-700 text-sm font-medium flex items-center whitespace-nowrap flex-shrink-0">
-            {effectiveFilteredAssetIds.length} assets
-          </div>
-          {selectedAssetIds.length > 0 && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button className="h-8 px-3 rounded-md bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200 transition-colors cursor-pointer">
-                  {selectedAssetIds.length} selected
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-60 p-3" align="start">
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-neutral-900 mb-2">
-                    Selected Assets:
-                  </div>
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {selectedAssetIds.map(assetId => {
-                      const asset = assets.find(a => a.id === assetId);
-                      return asset ? (
-                        <div key={assetId} className="text-sm text-neutral-700 py-1">
-                          • {asset.pipeSegment || asset.id}
-                        </div>
-                      ) : null;
-                    })}
-                  </div>
-                  <div className="pt-2 border-t border-neutral-200 flex gap-2">
-        <Button
-          variant="outline"
-                      size="sm"
-                      onClick={() => onAssetSelect([])}
-                      className="flex-1"
-                    >
-                      Clear Selection
-        </Button>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
-
-        {/* Center: Zoom Controls - centered */}
-        <div className="flex items-center justify-center gap-2 px-2 py-1 border border-neutral-300 rounded-lg bg-white shrink-0 whitespace-nowrap flex-shrink-0 max-w-fit mx-auto">
+        {/* Floating Zoom + Box Select Stack - Right Side */}
+        <div className="absolute right-4 bottom-[100px] z-30 w-11 bg-white rounded-lg shadow-md overflow-hidden">
+          {/* Zoom In */}
             <button
               onClick={handleZoomIn}
-            className="w-7 h-7 flex items-center justify-center rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+            className="w-11 h-11 flex items-center justify-center border-b border-neutral-200 hover:bg-neutral-50 transition-colors"
               aria-label="Zoom in"
             >
-              <span className="text-base font-medium text-neutral-700">+</span>
+            <span className="text-lg font-medium text-neutral-700">+</span>
             </button>
+          
+          {/* Zoom Level Display */}
+          <div className="w-11 h-11 flex items-center justify-center border-b border-neutral-200 text-sm font-medium text-neutral-700">
+            {zoom}
+          </div>
+          
+          {/* Zoom Out */}
             <button
               onClick={handleZoomOut}
-            className="w-7 h-7 flex items-center justify-center rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+            className="w-11 h-11 flex items-center justify-center border-b border-neutral-200 hover:bg-neutral-50 transition-colors"
               aria-label="Zoom out"
             >
-              <span className="text-base font-medium text-neutral-700">−</span>
+            <span className="text-lg font-medium text-neutral-700">−</span>
             </button>
-            <div className="px-2 text-xs font-medium text-neutral-600">
-              Zoom: {zoom}
-            </div>
-          <div className="w-px h-5 bg-neutral-200 mx-1" />
-          <Button
-            variant={selectionTool === 'box' ? 'secondary' : 'ghost'}
-            size="sm"
+
+          {/* Box Select */}
+          <button
             onClick={() => {
               setSelectionTool(selectionTool === 'box' ? null : 'box');
               setSelectionStart(null);
               setSelectionEnd(null);
             }}
-            className={`h-7 px-2 text-xs ${selectionTool === 'box' ? 'bg-blue-50 text-blue-700 border border-blue-200' : ''}`}
+            className={`w-11 h-11 flex items-center justify-center border-b border-neutral-200 transition-colors ${
+              selectionTool === 'box'
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'hover:bg-neutral-50 text-neutral-700'
+            }`}
+            aria-label="Box select"
           >
-            <Square className="w-3 h-3 mr-1" />
-            Box Select
-          </Button>
-        </div>
-
-        {/* Right: Quick Actions */}
-        <div className="flex items-center gap-2 shrink-0 whitespace-nowrap flex-shrink-0 min-w-0 justify-end">
-          {selectedAssetIds.length > 0 ? (
-            <Select onValueChange={(value) => {
-              if (value === 'create') {
-                // TODO: Open Create Work Order dialog
-                console.log('Create work order for', selectedAssetIds.length, 'assets');
-              } else {
-                // Quick assign to user
-                const userName = value === 'user1' ? 'John Smith' : value === 'user2' ? 'Mary Johnson' : 'Bob Wilson';
-                console.log(`Assign ${selectedAssetIds.length} assets to ${userName}`);
-                // TODO: Implement actual assignment API call
-                // After assignment, clear selection
-                onAssetSelect([]);
-              }
-            }}>
-              <SelectTrigger className="h-8 px-3 text-sm bg-blue-600 text-white hover:bg-blue-700 border-0 w-auto min-w-[120px] max-w-[180px]">
-                <SelectValue>Assign to...</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <div className="px-2 py-1.5 text-xs font-semibold text-neutral-500">
-                  Assign {selectedAssetIds.length} asset{selectedAssetIds.length !== 1 ? 's' : ''} to:
-        </div>
-                <SelectItem value="user1">👤 John Smith</SelectItem>
-                <SelectItem value="user2">👤 Mary Johnson</SelectItem>
-                <SelectItem value="user3">👤 Bob Wilson</SelectItem>
-                <SelectSeparator />
-                <SelectItem value="create">
-                  <div className="flex items-center gap-2">
-                    <span>+</span>
-                    <span>Create Work Order</span>
-      </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          ) : (
-            <Select disabled>
-              <SelectTrigger className="h-8 px-3 text-sm bg-neutral-300 text-neutral-500 border-0 cursor-not-allowed w-auto min-w-[120px] max-w-[180px]">
-                <SelectValue>Assign to...</SelectValue>
-              </SelectTrigger>
-            </Select>
+            <Square className="h-5 w-5" />
+          </button>
+          
+          {/* Cancel Button - Only visible when Box Select is active */}
+          {selectionTool === 'box' && (
+            <button
+              onClick={() => {
+                setSelectionTool(null);
+                setSelectionStart(null);
+                setSelectionEnd(null);
+              }}
+              className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
+              aria-label="Cancel box select"
+            >
+              <X className="h-5 w-5" />
+            </button>
           )}
         </div>
+      </div>
+
+      {/* Status Chip - Bottom Left (Floating) */}
+      <div className="absolute bottom-4 left-4 z-30">
+        <div className="px-3 py-1.5 rounded-md bg-black/50 text-white text-[13px] font-medium shadow-[0_2px_6px_rgba(0,0,0,0.2)]">
+          {selectionTool === 'box' && (selectionStart || selectionEnd) ? (
+            'Selecting...'
+          ) : selectedAssetIds.length > 0 ? (
+            `${selectedAssetIds.length} selected`
+          ) : (
+            `${effectiveFilteredAssetIds.length} assets`
+          )}
         </div>
       </div>
 

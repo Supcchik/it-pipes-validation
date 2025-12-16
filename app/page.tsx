@@ -1055,6 +1055,7 @@ export default function AssetListPage() {
                 {selectedAssetForSnapshots && (
                   <SnapshotsPanel
                     asset={selectedAssetForSnapshots}
+                    selectedAssets={selectedRows.length > 1 ? filteredAssets.filter(a => selectedRows.includes(a.id)) : []}
                     onClose={() => {
                       setSelectedAssetForSnapshots(null);
                       setSelectedRows([]);
@@ -1067,6 +1068,28 @@ export default function AssetListPage() {
                       }
                     }}
                     highlightedSnapshotId={highlightedSnapshotId}
+                    onAssign={(userId) => {
+                      if (userId === '') {
+                        // Unassign
+                        console.log(`Unassign ${selectedRows.length} assets`);
+                        // TODO: Implement actual unassignment API call
+                      } else {
+                        const userName = userId === 'user1' ? 'John Smith' : userId === 'user2' ? 'Mary Johnson' : 'Bob Wilson';
+                        console.log(`Assign ${selectedRows.length} assets to ${userName}`);
+                        // TODO: Implement actual assignment API call
+                      }
+                      // Don't close panel or clear selection - let user see the result
+                    }}
+                    onViewInspection={() => {
+                      if (selectedAssetForSnapshots?.latestInspection) {
+                        router.push(`/inspection/${selectedAssetForSnapshots.id}`);
+                      }
+                    }}
+                    onClearSelection={() => {
+                      setSelectedRows([]);
+                      setSelectedAssetForSnapshots(null);
+                      setHighlightedSnapshotId(null);
+                    }}
                   />
                 )}
               </div>
