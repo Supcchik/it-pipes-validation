@@ -57,6 +57,7 @@ export default function MapPanel({
   const lastCanvasSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const panOffsetRef = useRef({ x: 0, y: 0 });
   const resizeTimeoutRef = useRef<number | null>(null);
+  const [mapAreaBounds, setMapAreaBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const [zoom, setZoom] = useState(15);
   const [center, setCenter] = useState({ lat: 40.7580, lng: -73.9860 });
   const [basemap, setBasemap] = useState('streets');
@@ -997,7 +998,21 @@ export default function MapPanel({
       }
     };
 
+    // Update map area bounds for floating controls positioning
+    const updateMapAreaBounds = () => {
+      if (mapAreaRef.current) {
+        const rect = mapAreaRef.current.getBoundingClientRect();
+        setMapAreaBounds({
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        });
+      }
+    };
+
     resizeCanvas();
+    updateMapAreaBounds();
     
     // Use ResizeObserver for better performance with debouncing
     const resizeObserver = new ResizeObserver(() => {
@@ -1007,15 +1022,18 @@ export default function MapPanel({
       }
       resizeTimeoutRef.current = requestAnimationFrame(() => {
         resizeCanvas();
+        updateMapAreaBounds();
         resizeTimeoutRef.current = null;
       });
     });
     resizeObserver.observe(mapArea);
     
     window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('resize', updateMapAreaBounds);
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener('resize', resizeCanvas);
+      window.removeEventListener('resize', updateMapAreaBounds);
       if (resizeTimeoutRef.current !== null) {
         cancelAnimationFrame(resizeTimeoutRef.current);
         resizeTimeoutRef.current = null;
@@ -1092,72 +1110,95 @@ export default function MapPanel({
   return (
     <div 
       ref={containerRef}
-      className="relative w-full h-full bg-neutral-100 flex flex-col overflow-hidden"
+      className="relative w-full h-full bg-neutral-100 flex flex-col overflow-visible"
       role="application"
       aria-label="Asset map view"
       style={{ minWidth: 0, maxWidth: '100%' }}
     >
-      {/* Floating Search Pill - Top Left */}
-      <div className="absolute top-4 left-4 z-30">
-        <div className="relative w-[280px]">
-          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-neutral-400" />
-          <Input
-            value={mapSearchQuery}
-            onChange={(e) => handleMapSearch(e.target.value)}
-            onFocus={() => setShowSearchResults(mapSearchResults.length > 0)}
-            placeholder="Search city network..."
-            className="h-11 pl-11 pr-10 rounded-full bg-white shadow-md border-0 focus:border-2 focus:border-blue-600 focus:shadow-[0_4px_12px_rgba(59,130,246,0.25)] transition-all"
-          />
-          {mapSearchQuery && (
-            <button
-              onClick={() => {
-                setMapSearchQuery('');
-                setMapSearchResults([]);
-                setShowSearchResults(false);
-              }}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          
-          {/* Search Results Dropdown */}
-          {showSearchResults && mapSearchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 max-h-[300px] overflow-y-auto">
-              {mapSearchResults.map(asset => (
-                <button
-                  key={asset.id}
-                  onClick={() => handleMapSearchSelect(asset)}
-                  className="w-full px-4 py-2 text-left hover:bg-neutral-50 transition-colors flex items-center gap-3"
-                >
-                  <MapPin className="h-4 w-4 text-blue-600 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-neutral-900 truncate">
-                      {asset.name}
-                    </div>
-                    {asset.address && (
-                      <div className="text-xs text-neutral-500 truncate">
-                        {asset.address}
+      {/* Map Area - Canvas with floating controls */}
+      <div ref={mapAreaRef} className="flex-1 relative min-h-0 min-w-0" style={{ maxWidth: '100%', overflow: 'visible' }}>
+      {/* Canvas */}
+      <canvas
+        ref={canvasRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={(e) => {
+          // Only handle mouse leave for panning/selection, don't trigger onMapClick
+          if (isPanning) {
+            handleMouseUp(e);
+          } else if (selectionTool === 'box' && selectionStart && selectionEnd) {
+            handleMouseUp(e);
+          }
+          // Don't call onMapClick on mouseLeave - it causes deselection when hovering over snapshots panel
+        }}
+          className="absolute inset-0 w-full h-full"
+          style={{ cursor: getCursorStyle(), maxWidth: '100%', display: 'block', zIndex: 1 }}
+        />
+
+        {/* Floating Controls Layer - Overlay on top of canvas */}
+        <div className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible' }}>
+          {/* Floating Search Pill - Top Left */}
+          <div className="absolute top-4 left-4 pointer-events-auto">
+          <div className="relative w-[280px]">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-neutral-400" />
+            <Input
+              value={mapSearchQuery}
+              onChange={(e) => handleMapSearch(e.target.value)}
+              onFocus={() => setShowSearchResults(mapSearchResults.length > 0)}
+              placeholder="Search city network..."
+              className="h-11 pl-11 pr-10 rounded-full bg-white shadow-md border-0 focus:border-2 focus:border-blue-600 focus:shadow-[0_4px_12px_rgba(59,130,246,0.25)] transition-all"
+            />
+            {mapSearchQuery && (
+              <button
+                onClick={() => {
+                  setMapSearchQuery('');
+                  setMapSearchResults([]);
+                  setShowSearchResults(false);
+                }}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            
+            {/* Search Results Dropdown */}
+            {showSearchResults && mapSearchResults.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 max-h-[300px] overflow-y-auto">
+                {mapSearchResults.map(asset => (
+                  <button
+                    key={asset.id}
+                    onClick={() => handleMapSearchSelect(asset)}
+                    className="w-full px-4 py-2 text-left hover:bg-neutral-50 transition-colors flex items-center gap-3"
+                  >
+                    <MapPin className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-neutral-900 truncate">
+                        {asset.name}
                       </div>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+                      {asset.address && (
+                        <div className="text-xs text-neutral-500 truncate">
+                          {asset.address}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
       </div>
 
-      {/* Floating Settings Button - Top Right */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            className="absolute top-4 right-4 z-30 w-11 h-11 rounded-full bg-white shadow-md flex items-center justify-center hover:scale-105 transition-transform"
-            aria-label="Map settings"
-          >
-            <Settings className="h-5 w-5 text-neutral-700" />
-          </button>
-        </PopoverTrigger>
+          {/* Floating Settings Button - Top Right */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              className="absolute top-4 right-4 pointer-events-auto w-11 h-11 rounded-full bg-white shadow-md flex items-center justify-center hover:scale-105 transition-transform"
+              aria-label="Map settings"
+            >
+              <Settings className="h-5 w-5 text-neutral-700" />
+            </button>
+          </PopoverTrigger>
         <PopoverContent className="w-80 p-0" align="end">
           <div className="p-4 space-y-4">
             {/* Base Map Section - Google Maps style buttons */}
@@ -1319,29 +1360,8 @@ export default function MapPanel({
         </PopoverContent>
       </Popover>
 
-      {/* Map Area - Canvas only */}
-      <div ref={mapAreaRef} className="flex-1 relative min-h-0 overflow-hidden min-w-0" style={{ maxWidth: '100%' }}>
-        {/* Canvas */}
-        <canvas
-          ref={canvasRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={(e) => {
-            // Only handle mouse leave for panning/selection, don't trigger onMapClick
-            if (isPanning) {
-              handleMouseUp(e);
-            } else if (selectionTool === 'box' && selectionStart && selectionEnd) {
-              handleMouseUp(e);
-            }
-            // Don't call onMapClick on mouseLeave - it causes deselection when hovering over snapshots panel
-          }}
-          className="w-full h-full"
-          style={{ cursor: getCursorStyle(), maxWidth: '100%', display: 'block' }}
-        />
-
-        {/* Floating Zoom + Box Select Stack - Right Side */}
-        <div className="absolute right-4 bottom-[100px] z-30 w-11 bg-white rounded-lg shadow-md overflow-hidden">
+          {/* Floating Zoom + Box Select Stack - Right Side */}
+          <div className="absolute right-4 top-[76px] pointer-events-auto w-11 bg-white rounded-lg shadow-md overflow-hidden">
           {/* Zoom In */}
             <button
               onClick={handleZoomIn}
@@ -1396,19 +1416,20 @@ export default function MapPanel({
               <X className="h-5 w-5" />
             </button>
           )}
-        </div>
       </div>
 
-      {/* Status Chip - Bottom Left (Floating) */}
-      <div className="absolute bottom-4 left-4 z-30">
-        <div className="px-3 py-1.5 rounded-md bg-black/50 text-white text-[13px] font-medium shadow-[0_2px_6px_rgba(0,0,0,0.2)]">
-          {selectionTool === 'box' && (selectionStart || selectionEnd) ? (
-            'Selecting...'
-          ) : selectedAssetIds.length > 0 ? (
-            `${selectedAssetIds.length} selected`
-          ) : (
-            `${effectiveFilteredAssetIds.length} assets`
-          )}
+          {/* Status Chip - Bottom Left (Floating) */}
+          <div className="absolute bottom-4 left-4 pointer-events-auto">
+            <div className="px-3 py-1.5 rounded-md bg-black/50 text-white text-[13px] font-medium shadow-[0_2px_6px_rgba(0,0,0,0.2)]">
+              {selectionTool === 'box' && (selectionStart || selectionEnd) ? (
+                'Selecting...'
+              ) : selectedAssetIds.length > 0 ? (
+                `${selectedAssetIds.length} selected`
+              ) : (
+                `${effectiveFilteredAssetIds.length} assets`
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

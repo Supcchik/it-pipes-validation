@@ -280,15 +280,25 @@ export default function AssetListPage() {
 
   // Handle selection changes
   useEffect(() => {
-    if (selectedRows.length === 1) {
-      // Single-select: show snapshots panel
-      const selectedAsset = filteredAssets.find(a => a.id === selectedRows[0]);
-      if (selectedAsset) {
-        setSelectedAssetForSnapshots(selectedAsset);
-        setHighlightedSnapshotId(null); // Reset highlight when selecting new asset
+    if (selectedRows.length >= 1) {
+      // Single or multi-select: show snapshots panel
+      if (selectedRows.length === 1) {
+        // Single-select: show snapshots for one asset
+        const selectedAsset = filteredAssets.find(a => a.id === selectedRows[0]);
+        if (selectedAsset) {
+          setSelectedAssetForSnapshots(selectedAsset);
+          setHighlightedSnapshotId(null); // Reset highlight when selecting new asset
+        }
+      } else {
+        // Multi-select: show snapshots panel with first asset as primary, but pass all selected
+        const firstAsset = filteredAssets.find(a => a.id === selectedRows[0]);
+        if (firstAsset) {
+          setSelectedAssetForSnapshots(firstAsset);
+          setHighlightedSnapshotId(null);
+        }
       }
     } else {
-      // Multi-select or no selection: hide snapshots panel
+      // No selection: hide snapshots panel
       setSelectedAssetForSnapshots(null);
       setHighlightedSnapshotId(null);
     }
@@ -1051,7 +1061,7 @@ export default function AssetListPage() {
                   />
                 </div>
                 
-                {/* Snapshots Panel - appears when single asset selected, below map */}
+                {/* Snapshots Panel - appears when single or multiple assets selected, below map */}
                 {selectedAssetForSnapshots && (
                   <SnapshotsPanel
                     asset={selectedAssetForSnapshots}

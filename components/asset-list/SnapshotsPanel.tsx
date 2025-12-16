@@ -17,6 +17,9 @@ export interface SnapshotData {
   grade: 0 | 1 | 2 | 3 | 4 | 5;
   thumbnailUrl: string;
   inspectionId: string;
+  assetId?: string; // Asset ID for multi-select
+  assetName?: string; // Asset name/pipeSegment for multi-select
+  inspectionDate?: string; // Inspection date for display
 }
 
 interface SnapshotsPanelProps {
@@ -101,8 +104,27 @@ export default function SnapshotsPanel({
 
   if (!asset && selectedAssets.length === 0) return null;
 
-  const snapshots = asset ? generateMockSnapshots(asset) : [];
-  const filteredSnapshots = snapshots.filter(s => visibleGrades.includes(s.grade));
+  // Generate snapshots for single or multiple selection
+  let allSnapshots: SnapshotData[] = [];
+  if (isMultipleSelection && selectedAssets.length > 0) {
+    // Multi-select: generate snapshots for all selected assets
+    selectedAssets.forEach(selectedAsset => {
+      const assetSnapshots = generateMockSnapshots(selectedAsset);
+      // Add asset info to each snapshot
+      const snapshotsWithAssetInfo = assetSnapshots.map(s => ({
+        ...s,
+        assetId: selectedAsset.id,
+        assetName: selectedAsset.pipeSegment || selectedAsset.id,
+        inspectionDate: selectedAsset.latestInspection?.date || undefined
+      }));
+      allSnapshots = [...allSnapshots, ...snapshotsWithAssetInfo];
+    });
+  } else if (asset) {
+    // Single-select: generate snapshots for one asset
+    allSnapshots = generateMockSnapshots(asset);
+  }
+  
+  const filteredSnapshots = allSnapshots.filter(s => visibleGrades.includes(s.grade));
 
   const toggleGrade = (grade: number) => {
     setVisibleGrades(prev =>
@@ -179,18 +201,7 @@ export default function SnapshotsPanel({
 
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto">
-        {isMultipleSelection ? (
-          /* Multiple Selection: List of IDs */
-          <div className="px-4 py-3 max-h-[150px] overflow-y-auto">
-            <div className="space-y-1">
-              {displayAssets.map((a) => (
-                <div key={a.id} className="text-sm text-neutral-700 py-1">
-                  • {a.pipeSegment || a.id}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : asset ? (
+        {(isMultipleSelection || asset) ? (
           /* Single Selection: Snapshots */
           <>
             {/* Visible Grades Filter */}
@@ -263,6 +274,19 @@ export default function SnapshotsPanel({
                           {snapshot.codeDescription && (
                             <div className="text-xs text-neutral-500 truncate leading-tight">
                               {snapshot.codeDescription}
+                            </div>
+                          )}
+                          {/* Show asset name and inspection info for multi-select */}
+                          {isMultipleSelection && snapshot.assetName && (
+                            <div className="pt-1 border-t border-neutral-100 space-y-0.5">
+                              <div className="text-xs font-medium text-neutral-900 truncate">
+                                {snapshot.assetName}
+                              </div>
+                              {snapshot.inspectionDate && (
+                                <div className="text-xs text-neutral-500">
+                                  Insp: {snapshot.inspectionDate}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
