@@ -343,16 +343,6 @@ export default function SnapshotsPanel({
                     👤 {user.name}
                   </SelectItem>
                 ))}
-                <SelectSeparator />
-                <SelectItem value="create" onSelect={() => {
-                  console.log('Create work order');
-                  setAssignDropdownOpen(false);
-                }}>
-                  <div className="flex items-center gap-2">
-                    <span>+</span>
-                    <span>Create Work Order</span>
-                  </div>
-                </SelectItem>
               </SelectContent>
             </Select>
           </div>

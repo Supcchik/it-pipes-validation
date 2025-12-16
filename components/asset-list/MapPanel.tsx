@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Square, X, Search, MapPin, ChevronDownIcon, Settings, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -58,6 +58,7 @@ export default function MapPanel({
   const panOffsetRef = useRef({ x: 0, y: 0 });
   const resizeTimeoutRef = useRef<number | null>(null);
   const [mapAreaBounds, setMapAreaBounds] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  const lastPlotPointsKeyRef = useRef<string>('');
   const [zoom, setZoom] = useState(15);
   const [center, setCenter] = useState({ lat: 40.7580, lng: -73.9860 });
   const [basemap, setBasemap] = useState('streets');
@@ -194,10 +195,23 @@ export default function MapPanel({
     autoZoomToAssets(selectedAssetIds);
   }, [selectedAssetIds, effectiveFilteredAssetIds.length, autoZoomToAssets]);
 
+  // Create a stable key from selectedAssetIds to avoid regenerating on every render
+  const selectedIdsKey = useMemo(() => {
+    return selectedAssetIds.slice().sort().join(',');
+  }, [selectedAssetIds]);
+
   // Generate plot points for selected assets
   useEffect(() => {
     if (selectedAssetIds.length === 0) {
-      setPlotPoints([]);
+      if (plotPoints.length > 0) {
+        setPlotPoints([]);
+      }
+      lastPlotPointsKeyRef.current = '';
+      return;
+    }
+    
+    // Skip if we've already processed this exact selection
+    if (lastPlotPointsKeyRef.current === selectedIdsKey) {
       return;
     }
 
@@ -267,8 +281,9 @@ export default function MapPanel({
       });
     });
 
+    lastPlotPointsKeyRef.current = selectedIdsKey;
     setPlotPoints(points);
-  }, [selectedAssetIds, assets]);
+  }, [selectedIdsKey, assets.length]);
 
   // Convert lat/lng to canvas x/y
   const latLngToXY = useCallback((lat: number, lng: number) => {
