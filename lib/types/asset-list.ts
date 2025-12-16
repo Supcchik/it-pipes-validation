@@ -40,6 +40,14 @@ export interface View {
   createdAt: string;
   updatedAt: string;
   createdBy: string;
+  // Sharing information
+  shareLevel?: 'personal' | 'userRole' | 'specificUsers' | 'project' | 'companyWide';
+  sharedWith?: {
+    userRoles?: string[];
+    userIds?: string[];
+    projectId?: string;
+    canEdit?: boolean;
+  };
 }
 
 // Filter Configuration

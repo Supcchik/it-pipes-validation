@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Star, Edit, Trash2, Plus, Copy, Share2, Download, MoreVertical } from 'lucide-react';
+import { Star, Edit, Trash2, Plus, Copy, Share2, MoreVertical, Users, User, Building2, Globe, Lock } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -153,8 +153,20 @@ export default function ManageViewsDialog({
   };
 
   const handleShare = (shareLevel: ShareLevel, details: ShareDetails) => {
-    // TODO: Implement sharing logic
-    console.log('Sharing view:', viewToShare?.name, shareLevel, details);
+    if (!viewToShare) return;
+    
+    // Update view with sharing information
+    const updated = views.map(v =>
+      v.id === viewToShare.id
+        ? {
+            ...v,
+            shareLevel,
+            sharedWith: details
+          }
+        : v
+    );
+    onUpdateViews(updated);
+    
     setShareDialogOpen(false);
     setViewToShare(null);
   };
@@ -193,10 +205,6 @@ export default function ManageViewsDialog({
                   <DropdownMenuItem onClick={handleBulkDuplicate}>
                     <Copy className="w-4 h-4 mr-2" />
                     Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => console.log('Export')}>
-                    <Download className="w-4 h-4 mr-2" />
-                    Export
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleBulkDelete} className="text-red-600">
@@ -258,17 +266,45 @@ export default function ManageViewsDialog({
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center gap-2 flex-1">
+                        <div className="flex items-start gap-2 flex-1">
                           <Checkbox
                             checked={selectedViews.includes(view.id)}
                             onCheckedChange={(checked) => handleSelectView(view.id, checked as boolean)}
                             onClick={(e) => e.stopPropagation()}
+                            className="mt-0.5"
                           />
-                          <Star
-                            className="h-4 w-4 fill-yellow-400 text-yellow-400 cursor-pointer"
-                            onClick={() => handleToggleFavorite(view.id)}
-                          />
-                          <span className="text-sm">{view.name}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Star
+                                className="h-4 w-4 fill-yellow-400 text-yellow-400 cursor-pointer flex-shrink-0"
+                                onClick={() => handleToggleFavorite(view.id)}
+                              />
+                              <span className="text-sm">{view.name}</span>
+                            </div>
+                            {/* Share indicator - below name */}
+                            <div className="mt-1 ml-6">
+                              {view.shareLevel && view.shareLevel !== 'personal' && (
+                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-600 w-fit">
+                                  {view.shareLevel === 'companyWide' && <Globe className="h-3 w-3" />}
+                                  {view.shareLevel === 'project' && <Building2 className="h-3 w-3" />}
+                                  {view.shareLevel === 'userRole' && <Users className="h-3 w-3" />}
+                                  {view.shareLevel === 'specificUsers' && <User className="h-3 w-3" />}
+                                  <span>
+                                    {view.shareLevel === 'companyWide' && 'Organization'}
+                                    {view.shareLevel === 'project' && view.sharedWith?.projectId ? `Project: ${view.sharedWith.projectId}` : 'Project'}
+                                    {view.shareLevel === 'userRole' && view.sharedWith?.userRoles?.length ? `Role: ${view.sharedWith.userRoles.join(', ')}` : 'Role'}
+                                    {view.shareLevel === 'specificUsers' && view.sharedWith?.userIds?.length ? `${view.sharedWith.userIds.length} users` : 'Users'}
+                                  </span>
+                                </div>
+                              )}
+                              {(!view.shareLevel || view.shareLevel === 'personal') && (
+                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-500 w-fit">
+                                  <Lock className="h-3 w-3" />
+                                  <span>Personal</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button
@@ -339,17 +375,45 @@ export default function ManageViewsDialog({
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-center gap-2 flex-1">
+                      <div className="flex items-start gap-2 flex-1">
                         <Checkbox
                           checked={selectedViews.includes(view.id)}
                           onCheckedChange={(checked) => handleSelectView(view.id, checked as boolean)}
                           onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5"
                         />
-                        <Star
-                          className="h-4 w-4 text-neutral-400 cursor-pointer hover:text-yellow-400"
-                          onClick={() => handleToggleFavorite(view.id)}
-                        />
-                        <span className="text-sm">{view.name}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Star
+                              className="h-4 w-4 text-neutral-400 cursor-pointer hover:text-yellow-400 flex-shrink-0"
+                              onClick={() => handleToggleFavorite(view.id)}
+                            />
+                            <span className="text-sm">{view.name}</span>
+                          </div>
+                          {/* Share indicator - below name */}
+                          <div className="mt-1 ml-6">
+                            {view.shareLevel && view.shareLevel !== 'personal' && (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-600 w-fit">
+                                {view.shareLevel === 'companyWide' && <Globe className="h-3 w-3" />}
+                                {view.shareLevel === 'project' && <Building2 className="h-3 w-3" />}
+                                {view.shareLevel === 'userRole' && <Users className="h-3 w-3" />}
+                                {view.shareLevel === 'specificUsers' && <User className="h-3 w-3" />}
+                                <span>
+                                  {view.shareLevel === 'companyWide' && 'Organization'}
+                                  {view.shareLevel === 'project' && view.sharedWith?.projectId ? `Project: ${view.sharedWith.projectId}` : 'Project'}
+                                  {view.shareLevel === 'userRole' && view.sharedWith?.userRoles?.length ? `Role: ${view.sharedWith.userRoles.join(', ')}` : 'Role'}
+                                  {view.shareLevel === 'specificUsers' && view.sharedWith?.userIds?.length ? `${view.sharedWith.userIds.length} users` : 'Users'}
+                                </span>
+                              </div>
+                            )}
+                            {(!view.shareLevel || view.shareLevel === 'personal') && (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-500 w-fit">
+                                <Lock className="h-3 w-3" />
+                                <span>Personal</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
