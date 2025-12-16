@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Square, X, ChevronRight, ChevronLeft, ExternalLink } from 'lucide-react';
+import { Square, X, Search, MapPin, ChevronDownIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Layers } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { Asset, FilterConfig, PlotPoint } from '@/lib/types/asset-list';
 import { MOCK_MANHOLES, MOCK_PIPE_SEGMENTS, getPipeSegmentByAssetId } from '@/lib/mock-data/mockMapData';
 import { calculatePlotPosition, calculatePipeLength } from '@/lib/utils/map-utils';
-import MapSearch, { type NetworkAsset } from './MapSearch';
-import LayersPopOutWindow from './LayersPopOutWindow';
+import { type NetworkAsset } from './MapSearch';
 import ManholePopup from './ManholePopup';
 import PipeSegmentPopup from './PipeSegmentPopup';
 
@@ -52,14 +52,26 @@ export default function MapPanel({
 }: MapPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapAreaRef = useRef<HTMLDivElement>(null);
+  const lastCanvasSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const panOffsetRef = useRef({ x: 0, y: 0 });
+  const resizeTimeoutRef = useRef<number | null>(null);
   const [zoom, setZoom] = useState(15);
   const [center, setCenter] = useState({ lat: 40.7580, lng: -73.9860 });
   const [basemap, setBasemap] = useState('streets');
+  const [mapSearchQuery, setMapSearchQuery] = useState('');
+  const [mapSearchResults, setMapSearchResults] = useState<NetworkAsset[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   
   // Pan/drag state
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  
+  // Sync panOffset ref with state
+  useEffect(() => {
+    panOffsetRef.current = panOffset;
+  }, [panOffset]);
   const [clickedOnFeature, setClickedOnFeature] = useState(false); // Track if we clicked on a feature
   
   // Selection state
@@ -84,8 +96,6 @@ export default function MapPanel({
     manholes: true,
     heatMap: true, // Heat map overlay for selected assets
   });
-  const [layersPanelCollapsed, setLayersPanelCollapsed] = useState(false);
-  const [layersPopOutOpen, setLayersPopOutOpen] = useState(false);
 
   // Plot points state
   const [plotPoints, setPlotPoints] = useState<PlotPoint[]>([]);
@@ -261,12 +271,15 @@ export default function MapPanel({
     const width = canvas.width;
     const height = canvas.height;
     
-    const x = ((lng - center.lng) * 10000 * zoom) + (width / 2) + panOffset.x;
-    const y = ((center.lat - lat) * 10000 * zoom) + (height / 2) + panOffset.y;
+    // Use ref to get current panOffset (updated during resize) or fallback to state
+    const currentPanOffset = panOffsetRef.current;
+    
+    const x = ((lng - center.lng) * 10000 * zoom) + (width / 2) + currentPanOffset.x;
+    const y = ((center.lat - lat) * 10000 * zoom) + (height / 2) + currentPanOffset.y;
     
     return { x, y };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center, zoom, panOffset]);
+  }, [center, zoom]);
 
   // Draw heat map overlay for pipe segments with plot points
   const drawHeatMapOverlay = useCallback((ctx: CanvasRenderingContext2D) => {
@@ -650,7 +663,7 @@ export default function MapPanel({
 
     // Not a feature click, reset flag
     setClickedOnFeature(false);
-    
+
     // Start panning
     setIsPanning(true);
     setPanStart({ x, y });
@@ -798,7 +811,7 @@ export default function MapPanel({
         
         // Clickable area: 15 pixels from the line
         if (distance <= 15) {
-          return { type: 'pipe', id: pipe.id };
+        return { type: 'pipe', id: pipe.id };
         }
       }
     }
@@ -874,27 +887,96 @@ export default function MapPanel({
     return 'grab';
   };
 
-  // Resize canvas to match container
+  // Resize canvas to match map area container
   useEffect(() => {
     const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
+    const mapArea = mapAreaRef.current;
+    if (!canvas || !mapArea) return;
 
     const resizeCanvas = () => {
-      const rect = container.getBoundingClientRect();
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      const rect = mapArea.getBoundingClientRect();
+      // Ensure canvas never exceeds container width
+      const maxWidth = rect.width;
+      const maxHeight = rect.height;
+      const newWidth = Math.floor(Math.min(maxWidth, mapArea.clientWidth || maxWidth));
+      const newHeight = Math.floor(Math.min(maxHeight, mapArea.clientHeight || maxHeight));
+      const oldWidth = lastCanvasSizeRef.current.width;
+      const oldHeight = lastCanvasSizeRef.current.height;
+      
+      // Only resize if dimensions actually changed (with threshold to avoid tiny changes)
+      if (Math.abs(newWidth - oldWidth) > 1 || Math.abs(newHeight - oldHeight) > 1) {
+        // Update canvas size first - ensure it never exceeds container
+        canvas.width = newWidth;
+        canvas.height = newHeight;
+        // Also set CSS width/height to ensure it doesn't scale
+        canvas.style.width = `${newWidth}px`;
+        canvas.style.height = `${newHeight}px`;
+        
+        // Compensate panOffset to keep the same view when resizing
+        // This prevents the map from "jumping" when the container resizes
+        if (oldWidth > 0 && oldHeight > 0) {
+          const widthRatio = newWidth / oldWidth;
+          const heightRatio = newHeight / oldHeight;
+          
+          // Only update panOffset if ratio is significantly different from 1
+          if (Math.abs(widthRatio - 1) > 0.01 || Math.abs(heightRatio - 1) > 0.01) {
+            // Update ref immediately for use in drawMap
+            panOffsetRef.current = {
+              x: panOffsetRef.current.x * widthRatio,
+              y: panOffsetRef.current.y * heightRatio
+            };
+            
+            // Update state asynchronously to avoid infinite loop
+            setTimeout(() => {
+              setPanOffset(panOffsetRef.current);
+            }, 0);
+          }
+        }
+        
+        // Update ref to track current size
+        lastCanvasSizeRef.current = { width: newWidth, height: newHeight };
+        
+        // Redraw after a small delay to let panOffset update settle
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
       drawMap();
+          });
+        });
+      }
     };
 
     resizeCanvas();
+    
+    // Use ResizeObserver for better performance with debouncing
+    const resizeObserver = new ResizeObserver(() => {
+      // Debounce resize to avoid too many redraws and infinite loops
+      if (resizeTimeoutRef.current !== null) {
+        cancelAnimationFrame(resizeTimeoutRef.current);
+      }
+      resizeTimeoutRef.current = requestAnimationFrame(() => {
+        resizeCanvas();
+        resizeTimeoutRef.current = null;
+      });
+    });
+    resizeObserver.observe(mapArea);
+    
     window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', resizeCanvas);
+      if (resizeTimeoutRef.current !== null) {
+        cancelAnimationFrame(resizeTimeoutRef.current);
+        resizeTimeoutRef.current = null;
+      }
+    };
   }, [drawMap]);
 
-  // Redraw on changes
+  // Redraw on changes - use requestAnimationFrame to avoid issues during hover
   useEffect(() => {
+    const rafId = requestAnimationFrame(() => {
     drawMap();
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [drawMap]);
 
   // Get clicked manhole or pipe for popup
@@ -905,39 +987,36 @@ export default function MapPanel({
     ? MOCK_PIPE_SEGMENTS.find(p => p.id === clickedItem.id)
     : null;
 
-  return (
-    <div 
-      ref={containerRef}
-      className="relative w-full h-full bg-neutral-100"
-      role="application"
-      aria-label="Asset map view"
-    >
-      {/* Canvas */}
-      <canvas
-        ref={canvasRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={(e) => {
-          // Only handle mouse leave for panning/selection, don't trigger onMapClick
-          if (isPanning) {
-            handleMouseUp(e);
-          } else if (selectionTool === 'box' && selectionStart && selectionEnd) {
-            handleMouseUp(e);
-          }
-          // Don't call onMapClick on mouseLeave - it causes deselection when hovering over snapshots panel
-        }}
-        className="w-full h-full"
-        style={{ cursor: getCursorStyle() }}
-      />
+  // Handle map search
+  const handleMapSearch = (query: string) => {
+    setMapSearchQuery(query);
+    if (!query.trim()) {
+      setMapSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+    
+    // Mock search - in real app this would query ESRI database
+    const q = query.toLowerCase();
+    const mockResults: NetworkAsset[] = [
+      { id: 'net-1', name: 'S-104', type: 'pipe' as const, address: 'Main St', lat: 40.7580, lng: -73.9860 },
+      { id: 'net-2', name: 'S-105', type: 'pipe' as const, address: 'Main St', lat: 40.7585, lng: -73.9865 },
+      { id: 'net-3', name: 'MH-234', type: 'manhole' as const, address: 'Oak Ave', lat: 40.7590, lng: -73.9870 },
+    ].filter(asset => 
+      asset.name.toLowerCase().includes(q) ||
+      asset.address?.toLowerCase().includes(q)
+    );
+    
+    setMapSearchResults(mockResults);
+    setShowSearchResults(mockResults.length > 0);
+  };
 
-      {/* Map Search - top right */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-        <MapSearch
-          onAssetSelect={(asset) => {
+  const handleMapSearchSelect = (asset: NetworkAsset) => {
             // Navigate map to asset location
             setCenter({ lat: asset.lat, lng: asset.lng });
             setZoom(17);
+    setMapSearchQuery('');
+    setShowSearchResults(false);
             
             // Check if asset exists in current table
             const existingAsset = assets.find(a => 
@@ -953,14 +1032,76 @@ export default function MapPanel({
               // Show "Create Work Order" option (could be a toast or modal)
               console.log(`Asset ${asset.name} not in current table. Create Work Order?`);
             }
-          }}
-        />
-        
-        {/* Basemap Selector */}
+  };
+
+  // Calculate active layers count
+  const activeLayersCount = Object.values(layers).filter(Boolean).length;
+
+  return (
+    <div 
+      ref={containerRef}
+      className="relative w-full h-full bg-neutral-100 flex flex-col overflow-hidden"
+      role="application"
+      aria-label="Asset map view"
+      style={{ minWidth: 0, maxWidth: '100%' }}
+    >
+      {/* Top Toolbar */}
+      <div className="h-14 px-4 py-2 bg-white border-b border-neutral-200 shadow-sm flex items-center gap-4 z-20 shrink-0 min-w-0 overflow-hidden">
+        {/* Map Search Input */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
+          <Input
+            value={mapSearchQuery}
+            onChange={(e) => handleMapSearch(e.target.value)}
+            onFocus={() => setShowSearchResults(mapSearchResults.length > 0)}
+            placeholder="Search city network..."
+            className="pl-9 pr-9 h-10"
+          />
+          {mapSearchQuery && (
+            <button
+              onClick={() => {
+                setMapSearchQuery('');
+                setMapSearchResults([]);
+                setShowSearchResults(false);
+              }}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          
+          {/* Search Results Dropdown */}
+          {showSearchResults && mapSearchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+              {mapSearchResults.map(asset => (
+                <button
+                  key={asset.id}
+                  onClick={() => handleMapSearchSelect(asset)}
+                  className="w-full px-4 py-2 text-left hover:bg-neutral-50 transition-colors flex items-center gap-3"
+                >
+                  <MapPin className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-neutral-900 truncate">
+                      {asset.name}
+                    </div>
+                    {asset.address && (
+                      <div className="text-xs text-neutral-500 truncate">
+                        {asset.address}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Base Map Selector */}
         <Select value={basemap} onValueChange={setBasemap}>
-          <SelectTrigger className="w-36 bg-white shadow-md">
-            <Layers className="w-4 h-4 mr-2" />
-            <SelectValue />
+          <SelectTrigger className="w-36 h-10">
+            <SelectValue>
+              <span className="text-sm">Base: {basemap.charAt(0).toUpperCase() + basemap.slice(1)}</span>
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="streets">Streets</SelectItem>
@@ -969,114 +1110,144 @@ export default function MapPanel({
             <SelectItem value="topo">Topographic</SelectItem>
           </SelectContent>
         </Select>
-      </div>
 
-      {/* Layer Controls */}
-      {!layersPanelCollapsed ? (
-        <div className="absolute top-20 right-4 bg-white rounded-lg shadow-md border border-neutral-200 z-10">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-200">
-            <Label className="text-sm font-semibold text-neutral-700">Layers</Label>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setLayersPopOutOpen(true)}
-                title="Pop out layers panel"
-              >
-                <ExternalLink className="h-3 w-3" />
+        {/* Layers Dropdown */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="w-36 h-10 justify-between">
+              <span className="text-sm">Layers ({activeLayersCount})</span>
+              <ChevronDownIcon className="h-4 w-4 opacity-50" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setLayersPanelCollapsed(true)}
-                title="Collapse layers panel"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <div className="px-3 py-2.5 space-y-2">
-            <div className="flex items-center gap-2">
+          </PopoverTrigger>
+          <PopoverContent className="w-60 p-0" align="start">
+            <div className="px-2 py-1.5 space-y-1">
+              <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded">
               <Checkbox
-                id="layer-sewer"
+                  id="dropdown-layer-sewer"
                 checked={layers.sewerLines}
                 onCheckedChange={(checked) =>
                   setLayers({ ...layers, sewerLines: checked as boolean })
                 }
-                className="h-4 w-4 rounded border-neutral-300"
+                  className="h-4 w-4"
               />
-              <Label htmlFor="layer-sewer" className="text-sm font-medium cursor-pointer select-none">
+                <Label htmlFor="dropdown-layer-sewer" className="text-sm font-medium cursor-pointer select-none flex-1">
                 SewerLines_All
               </Label>
             </div>
             
-            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded">
               <Checkbox
-                id="layer-manholes"
+                  id="dropdown-layer-manholes"
                 checked={layers.manholes}
                 onCheckedChange={(checked) =>
                   setLayers({ ...layers, manholes: checked as boolean })
                 }
-                className="h-4 w-4 rounded border-neutral-300"
+                  className="h-4 w-4"
               />
-              <Label htmlFor="layer-manholes" className="text-sm font-medium cursor-pointer select-none">
+                <Label htmlFor="dropdown-layer-manholes" className="text-sm font-medium cursor-pointer select-none flex-1">
                 Manholes_All
               </Label>
             </div>
-            
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="layer-heatmap"
-                checked={layers.heatMap}
-                onCheckedChange={(checked) =>
-                  setLayers({ ...layers, heatMap: checked as boolean })
-                }
-                className="h-4 w-4 rounded border-neutral-300"
-              />
-              <Label htmlFor="layer-heatmap" className="text-sm font-medium cursor-pointer select-none">
-                Heat Map (Grades)
-              </Label>
-            </div>
+              
+              <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-neutral-50 rounded">
+                <Checkbox
+                  id="dropdown-layer-heatmap"
+                  checked={layers.heatMap}
+                  onCheckedChange={(checked) =>
+                    setLayers({ ...layers, heatMap: checked as boolean })
+                  }
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="dropdown-layer-heatmap" className="text-sm font-medium cursor-pointer select-none flex-1">
+                  Heat Map (Grades)
+                </Label>
           </div>
         </div>
-      ) : (
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {/* Map Area - Canvas only */}
+      <div ref={mapAreaRef} className="flex-1 relative min-h-0 overflow-hidden min-w-0" style={{ maxWidth: '100%' }}>
+        {/* Canvas */}
+        <canvas
+          ref={canvasRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={(e) => {
+            // Only handle mouse leave for panning/selection, don't trigger onMapClick
+            if (isPanning) {
+              handleMouseUp(e);
+            } else if (selectionTool === 'box' && selectionStart && selectionEnd) {
+              handleMouseUp(e);
+            }
+            // Don't call onMapClick on mouseLeave - it causes deselection when hovering over snapshots panel
+          }}
+          className="w-full h-full"
+          style={{ cursor: getCursorStyle(), maxWidth: '100%', display: 'block' }}
+        />
+      </div>
+
+      {/* Bottom Control Bar - Outside canvas */}
+      <div className="h-12 bg-white border-t border-neutral-200 relative z-20 shrink-0 min-w-0 overflow-hidden">
+        {/* Wrapper using grid for predictable layout - ensure it never exceeds parent width */}
+        <div className="h-full grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-4 min-w-0 w-full" style={{ maxWidth: '100%', boxSizing: 'border-box' }}>
+        {/* Left: Status Chips */}
+        <div className="flex items-center gap-2 shrink-0 flex-shrink-0 min-w-0">
+          <div className="h-8 px-3 rounded-md bg-neutral-100 text-neutral-700 text-sm font-medium flex items-center whitespace-nowrap flex-shrink-0">
+            {effectiveFilteredAssetIds.length} assets
+          </div>
+          {selectedAssetIds.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="h-8 px-3 rounded-md bg-blue-100 text-blue-700 text-sm font-medium hover:bg-blue-200 transition-colors cursor-pointer">
+                  {selectedAssetIds.length} selected
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-60 p-3" align="start">
+                <div className="space-y-2">
+                  <div className="text-sm font-semibold text-neutral-900 mb-2">
+                    Selected Assets:
+                  </div>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {selectedAssetIds.map(assetId => {
+                      const asset = assets.find(a => a.id === assetId);
+                      return asset ? (
+                        <div key={assetId} className="text-sm text-neutral-700 py-1">
+                          • {asset.pipeSegment || asset.id}
+                        </div>
+                      ) : null;
+                    })}
+                  </div>
+                  <div className="pt-2 border-t border-neutral-200 flex gap-2">
         <Button
           variant="outline"
-          size="icon"
-          className="absolute top-20 right-4 bg-white shadow-md z-10 h-9 w-9"
-          onClick={() => setLayersPanelCollapsed(false)}
-          title="Expand layers panel"
-        >
-          <ChevronLeft className="h-4 w-4" />
+                      size="sm"
+                      onClick={() => onAssetSelect([])}
+                      className="flex-1"
+                    >
+                      Clear Selection
         </Button>
-      )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
 
-      {/* Pop-out Layers Window */}
-      {layersPopOutOpen && typeof window !== 'undefined' && (
-        <LayersPopOutWindow
-          layers={layers}
-          onLayersChange={setLayers}
-          onClose={() => setLayersPopOutOpen(false)}
-        />
-      )}
-
-      {/* Integrated Map Toolbar */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
-        <div className="bg-white rounded-lg shadow-lg border border-neutral-200 px-2 py-2 flex items-center gap-2">
-          {/* Zoom Controls Section */}
-          <div className="flex items-center gap-1.5">
+        {/* Center: Zoom Controls - centered */}
+        <div className="flex items-center justify-center gap-2 px-2 py-1 border border-neutral-300 rounded-lg bg-white shrink-0 whitespace-nowrap flex-shrink-0 max-w-fit mx-auto">
             <button
               onClick={handleZoomIn}
-              className="w-7 h-7 flex items-center justify-center bg-white rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
               aria-label="Zoom in"
             >
               <span className="text-base font-medium text-neutral-700">+</span>
             </button>
             <button
               onClick={handleZoomOut}
-              className="w-7 h-7 flex items-center justify-center bg-white rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
+            className="w-7 h-7 flex items-center justify-center rounded border border-neutral-200 hover:bg-neutral-50 transition-colors"
               aria-label="Zoom out"
             >
               <span className="text-base font-medium text-neutral-700">−</span>
@@ -1084,11 +1255,7 @@ export default function MapPanel({
             <div className="px-2 text-xs font-medium text-neutral-600">
               Zoom: {zoom}
             </div>
-          </div>
-
-          <div className="w-px h-6 bg-neutral-200" />
-
-          {/* Box Select */}
+          <div className="w-px h-5 bg-neutral-200 mx-1" />
           <Button
             variant={selectionTool === 'box' ? 'secondary' : 'ghost'}
             size="sm"
@@ -1097,36 +1264,57 @@ export default function MapPanel({
               setSelectionStart(null);
               setSelectionEnd(null);
             }}
-            className={`h-8 px-3 ${selectionTool === 'box' ? 'bg-blue-50 text-blue-700 border border-blue-200' : ''}`}
+            className={`h-7 px-2 text-xs ${selectionTool === 'box' ? 'bg-blue-50 text-blue-700 border border-blue-200' : ''}`}
           >
-            <Square className="w-4 h-4 mr-2" />
-            <span className="text-sm font-medium">Box Select</span>
+            <Square className="w-3 h-3 mr-1" />
+            Box Select
           </Button>
+        </div>
 
-          {/* Clear (conditional) */}
-          {(selectionTool || selectedAssetIds.length > 0) && (
-            <>
-              <div className="w-px h-6 bg-neutral-200" />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleClearSelection}
-                className="h-8 px-3 hover:bg-red-50 text-red-600 hover:text-red-700"
-              >
-                <X className="w-4 h-4 mr-2" />
-                <span className="text-sm font-medium">Clear</span>
-              </Button>
-            </>
+        {/* Right: Quick Actions */}
+        <div className="flex items-center gap-2 shrink-0 whitespace-nowrap flex-shrink-0 min-w-0 justify-end">
+          {selectedAssetIds.length > 0 ? (
+            <Select onValueChange={(value) => {
+              if (value === 'create') {
+                // TODO: Open Create Work Order dialog
+                console.log('Create work order for', selectedAssetIds.length, 'assets');
+              } else {
+                // Quick assign to user
+                const userName = value === 'user1' ? 'John Smith' : value === 'user2' ? 'Mary Johnson' : 'Bob Wilson';
+                console.log(`Assign ${selectedAssetIds.length} assets to ${userName}`);
+                // TODO: Implement actual assignment API call
+                // After assignment, clear selection
+                onAssetSelect([]);
+              }
+            }}>
+              <SelectTrigger className="h-8 px-3 text-sm bg-blue-600 text-white hover:bg-blue-700 border-0 w-auto min-w-[120px] max-w-[180px]">
+                <SelectValue>Assign to...</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <div className="px-2 py-1.5 text-xs font-semibold text-neutral-500">
+                  Assign {selectedAssetIds.length} asset{selectedAssetIds.length !== 1 ? 's' : ''} to:
+        </div>
+                <SelectItem value="user1">👤 John Smith</SelectItem>
+                <SelectItem value="user2">👤 Mary Johnson</SelectItem>
+                <SelectItem value="user3">👤 Bob Wilson</SelectItem>
+                <SelectSeparator />
+                <SelectItem value="create">
+                  <div className="flex items-center gap-2">
+                    <span>+</span>
+                    <span>Create Work Order</span>
+      </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Select disabled>
+              <SelectTrigger className="h-8 px-3 text-sm bg-neutral-300 text-neutral-500 border-0 cursor-not-allowed w-auto min-w-[120px] max-w-[180px]">
+                <SelectValue>Assign to...</SelectValue>
+              </SelectTrigger>
+            </Select>
           )}
         </div>
-      </div>
-
-      {/* Map Info */}
-      <div className="absolute bottom-8 right-4 bg-white rounded-lg shadow-md border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-700 z-10">
-        <span>{effectiveFilteredAssetIds.length} assets loaded</span>
-        {selectedAssetIds.length > 0 && (
-          <span className="text-neutral-500"> • {selectedAssetIds.length} selected</span>
-        )}
+        </div>
       </div>
 
       {/* Popups */}
