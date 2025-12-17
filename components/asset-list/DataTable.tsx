@@ -518,7 +518,7 @@ export default function DataTable({
       if (onUpdateAsset) {
         const result = onUpdateAsset(editingRowId, { [field]: value });
         // Handle both sync and async updates
-        if (result instanceof Promise) {
+        if (result && typeof (result as any).then === 'function') {
           await result;
         }
       }
