@@ -26,7 +26,7 @@ interface ShareViewDialogProps {
   onShare: (shareLevel: ShareLevel, details: ShareDetails) => void;
 }
 
-interface ShareDetails {
+export interface ShareDetails {
   userRoles?: string[];
   userIds?: string[];
   projectId?: string;
