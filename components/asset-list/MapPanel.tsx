@@ -258,7 +258,7 @@ export default function MapPanel({
 
       // Generate mock observations with random distribution along pipe segment
       // Create random distances with minimum spacing to avoid clustering
-      const minSpacing = Math.max(10, pipeLength / (asset.observationCount * 2)); // Minimum 10 feet or pipeLength / (count * 2)
+      const minSpacing = Math.max(10, pipeLength / ((asset.observationCount ?? 0) * 2)); // Minimum 10 feet or pipeLength / (count * 2)
       const distances: number[] = [];
       
       // Generate random distances ensuring minimum spacing
