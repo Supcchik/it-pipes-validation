@@ -116,7 +116,7 @@ export default function ActiveFiltersBar({
             }
           >
             {filter.isFromView && (
-              <Bookmark className="w-3 h-3 text-blue-600" title="From view" />
+              <Bookmark className="w-3 h-3 text-blue-600" />
             )}
             <span className="text-xs">
               <span className="font-medium">{getFieldLabel(filter.field)}</span>{' '}
