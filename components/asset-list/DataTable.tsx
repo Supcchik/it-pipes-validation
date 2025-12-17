@@ -846,7 +846,7 @@ export default function DataTable({
                             // Number input
                             <Input
                               type="number"
-                              value={getEditingValue(column) || ''}
+                              value={getEditingValue(column) != null ? String(getEditingValue(column)) : ''}
                               onChange={(e) => {
                                 const numValue = e.target.value === '' ? null : Number(e.target.value);
                                 updateField(column.field, numValue);
