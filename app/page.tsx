@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import Header from '@/components/asset-list/Header';
@@ -38,7 +38,7 @@ import type { ReportConfig } from '@/lib/utils/pdf-generator';
 import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl, formatActiveTypes, areAllTypesSelected } from '@/lib/utils/asset-type-utils';
 import { getColumnsByType, getAllColumnsForTypes } from '@/lib/utils/column-schemas';
 
-function AssetListPageContent() {
+function AssetListPageContent(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -1694,5 +1694,13 @@ function AssetListPageContent() {
         onCreateView={handleCreateView}
       />
     </div>
+  );
+}
+
+export default function AssetListPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+      <AssetListPageContent />
+    </Suspense>
   );
 }
