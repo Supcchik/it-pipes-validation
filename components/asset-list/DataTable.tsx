@@ -462,7 +462,7 @@ export default function DataTable({
 
       // Save all fields
       const result = onUpdateAsset(editingRowId, editingValues);
-      if (result && typeof (result as any).then === 'function') {
+      if (result && typeof (result as { then?: unknown }).then === 'function') {
         await (result as Promise<void>);
       }
       
@@ -518,7 +518,7 @@ export default function DataTable({
       if (onUpdateAsset) {
         const result = onUpdateAsset(editingRowId, { [field]: value });
         // Handle both sync and async updates
-        if (result && typeof (result as any).then === 'function') {
+        if (result && typeof (result as { then?: unknown }).then === 'function') {
           await result;
         }
       }
