@@ -553,34 +553,30 @@ export default function MapPanel({
 
     // Use pre-computed active type flags
     
-    // Draw pipe segments (for ML and L)
-    if (layers.sewerLines && (isMLActive || isLActive)) {
+    // Draw pipe segments (for ML) - show all in combined view
+    if (layers.sewerLines && isMLActive) {
       MOCK_PIPE_SEGMENTS.forEach(pipe => {
-        // Check if this pipe belongs to current asset type
-        const pipeAsset = assetsByType.find(a => a.id === pipe.assetId);
+        // Check if this pipe belongs to ML asset type
+        const pipeAsset = assetsByType.find(a => a.id === pipe.assetId && a.asset_type === 'ML');
         const isActiveType = pipeAsset !== undefined;
         
-        // For inactive types, show as gray background
-        if (!isActiveType && (assetTypes.includes('MH') && !isMLActive && !isLActive)) {
-          // Draw inactive pipes (gray, thin, low opacity)
-          ctx.strokeStyle = '#D1D5DB';
-          ctx.lineWidth = 1;
-          ctx.globalAlpha = 0.5;
-        } else if (!isActiveType) {
-          // Not current type and not MH - skip
+        // In combined view, show all pipes; otherwise only if linked to assets
+        if (!isActiveType && !isCombinedView) {
+          // Skip pipes not linked to assets (unless combined view)
           return;
-        } else {
-          // Active type - normal styling
-          const isSelected = selectedAssetIds.includes(pipe.assetId);
-          const isFiltered = !effectiveFilteredAssetIds.includes(pipe.assetId);
-          const isHovered = hoveredItem?.type === 'pipe' && hoveredItem.id === pipe.id;
-
-          if (isFiltered) return; // Don't draw filtered out items
-
-          ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : PIPE_STYLES.default.stroke;
-          ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : PIPE_STYLES.default.strokeWidth;
-          ctx.globalAlpha = PIPE_STYLES.default.opacity;
         }
+        
+        // Active type or combined view - normal styling
+        const isSelected = selectedAssetIds.includes(pipe.assetId);
+        // In combined view, show all pipes; otherwise filter by effectiveFilteredAssetIds
+        const isFiltered = isCombinedView ? false : !effectiveFilteredAssetIds.includes(pipe.assetId);
+        const isHovered = hoveredItem?.type === 'pipe' && hoveredItem.id === pipe.id;
+
+        if (isFiltered) return; // Don't draw filtered out items
+
+        ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : PIPE_STYLES.default.stroke;
+        ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : PIPE_STYLES.default.strokeWidth;
+        ctx.globalAlpha = PIPE_STYLES.default.opacity;
 
         ctx.beginPath();
         pipe.coordinates.forEach((coord, index) => {
@@ -591,8 +587,8 @@ export default function MapPanel({
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Draw labels and asset IDs if enabled (only for active types)
-        if (isActiveType && (displayOptions.showLabels || displayOptions.showAssetIds)) {
+        // Draw labels and asset IDs if enabled (always show in combined view, or if active type)
+        if ((isActiveType || isCombinedView) && (displayOptions.showLabels || displayOptions.showAssetIds)) {
           // Find midpoint of pipe for label placement
           const midIndex = Math.floor(pipe.coordinates.length / 2);
           const midCoord = pipe.coordinates[midIndex];
@@ -629,18 +625,21 @@ export default function MapPanel({
         }
       });
       
-      // Draw laterals from their geometry (for L type)
+      // Draw laterals from their geometry (for L type) - show all in combined view
       if (isLActive) {
         assetsByType.forEach(asset => {
           if (asset.asset_type === 'L' && asset.geometry && asset.geometry.type === 'LineString') {
             const isSelected = selectedAssetIds.includes(asset.id);
-            const isFiltered = !effectiveFilteredAssetIds.includes(asset.id);
+            // In combined view, show all laterals; otherwise filter by effectiveFilteredAssetIds
+            const isFiltered = isCombinedView ? false : !effectiveFilteredAssetIds.includes(asset.id);
             const isHovered = hoveredItem?.type === 'pipe' && hoveredItem.id === asset.id;
 
             if (isFiltered) return;
 
-            ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : '#8B5CF6'; // Purple for laterals
+            // Green color for laterals with dashed line style
+            ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : '#10B981'; // Green for laterals
             ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : 2; // Thinner for laterals
+            ctx.setLineDash([5, 3]); // Dashed line for laterals
             ctx.globalAlpha = PIPE_STYLES.default.opacity;
 
             const coords = asset.geometry.coordinates as [number, number][];
@@ -651,6 +650,7 @@ export default function MapPanel({
               else ctx.lineTo(x, y);
             });
             ctx.stroke();
+            ctx.setLineDash([]); // Reset dash pattern
             ctx.globalAlpha = 1;
 
             // Draw labels if enabled
@@ -696,28 +696,30 @@ export default function MapPanel({
         );
         const isActiveType = relatedAssets.length > 0;
         
-        // For inactive types, show as gray background
-        if (!isActiveType && ((isMLActive || isLActive) && !isMHActive)) {
-          // Draw inactive manholes (gray, small, low opacity)
-          const { x, y } = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
-          ctx.beginPath();
-          ctx.arc(x, y, 4, 0, 2 * Math.PI);
-          ctx.fillStyle = '#D1D5DB';
-          ctx.globalAlpha = 0.5;
-          ctx.fill();
-          ctx.globalAlpha = 1;
-          return;
-        } else if (!isActiveType) {
-          // Not current type and not ML/L - skip
+        // In combined view, show all manholes; otherwise only if linked to assets
+        if (!isActiveType && !isCombinedView) {
+          // Skip manholes not linked to assets (unless combined view)
+          // But show as gray background if ML/L are active (to show context)
+          if ((isMLActive || isLActive) && !isMHActive) {
+            // Draw inactive manholes (gray, small, low opacity) as context
+            const { x, y } = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
+            ctx.beginPath();
+            ctx.arc(x, y, 4, 0, 2 * Math.PI);
+            ctx.fillStyle = '#D1D5DB';
+            ctx.globalAlpha = 0.5;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
           return;
         }
         
-        // Active type - normal styling
-        const isInFiltered = relatedAssets.some(a => effectiveFilteredAssetIds.includes(a.id));
+        // Active type or combined view - normal styling
+        // In combined view, show all manholes; otherwise filter by effectiveFilteredAssetIds
+        const isInFiltered = isCombinedView ? true : relatedAssets.some(a => effectiveFilteredAssetIds.includes(a.id));
+        if (!isInFiltered) return;
+        
         const isSelected = relatedAssets.some(a => selectedAssetIds.includes(a.id));
         const isHovered = hoveredItem?.type === 'manhole' && hoveredItem.id === manhole.id;
-
-        if (!isInFiltered) return;
 
         const { x, y } = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
         const style = isSelected ? MANHOLE_STYLES.selected : isHovered ? MANHOLE_STYLES.hover : MANHOLE_STYLES.default;

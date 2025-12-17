@@ -36,7 +36,8 @@ export const mockManholes: Asset[] = [
     },
     geometry: {
       type: 'Point',
-      coordinates: [39.7817, -89.6501]
+      // Use NYC area coordinates to match manholes (40.7580, -73.9860)
+      coordinates: [40.7580, -73.9860]
     }
   },
   {
@@ -63,7 +64,8 @@ export const mockManholes: Asset[] = [
     },
     geometry: {
       type: 'Point',
-      coordinates: [39.7820, -89.6505]
+      // Use NYC area coordinates to match manholes (40.7580, -73.9860)
+      coordinates: [40.7585, -73.9865]
     }
   },
   {
@@ -90,7 +92,8 @@ export const mockManholes: Asset[] = [
     },
     geometry: {
       type: 'Point',
-      coordinates: [39.7825, -89.6510]
+      // Use NYC area coordinates to match manholes (40.7580, -73.9860)
+      coordinates: [40.7590, -73.9870]
     }
   },
   // Generate more manholes
@@ -118,7 +121,8 @@ export const mockManholes: Asset[] = [
     },
     geometry: {
       type: 'Point' as const,
-      coordinates: [39.7817 + (i * 0.001), -89.6501 - (i * 0.001)]
+      // Use NYC area coordinates to match manholes (40.7580, -73.9860)
+      coordinates: [40.7580 + (Math.floor(i / 6) * 0.0015), -73.9860 + ((i % 6) * 0.0015)]
     }
   }))
 ];
@@ -154,9 +158,10 @@ export const mockLaterals: Asset[] = [
     maxGrade: 2,
     geometry: {
       type: 'LineString',
+      // Use NYC area coordinates to match manholes (40.7580, -73.9860)
       coordinates: [
-        [39.7817, -89.6501],
-        [39.7818, -89.6502]
+        [40.7580, -73.9860],
+        [40.7583, -73.9863]
       ]
     }
   },
@@ -189,9 +194,10 @@ export const mockLaterals: Asset[] = [
     maxGrade: 1,
     geometry: {
       type: 'LineString',
+      // Use NYC area coordinates to match manholes (40.7580, -73.9860)
       coordinates: [
-        [39.7817, -89.6501],
-        [39.7819, -89.6503]
+        [40.7580, -73.9860],
+        [40.7584, -73.9864]
       ]
     }
   },
@@ -224,9 +230,10 @@ export const mockLaterals: Asset[] = [
     maxGrade: 3,
     geometry: {
       type: 'LineString',
+      // Use NYC area coordinates to match manholes (40.7580, -73.9860)
       coordinates: [
-        [39.7820, -89.6505],
-        [39.7821, -89.6506]
+        [40.7585, -73.9865],
+        [40.7586, -73.9866]
       ]
     }
   },
@@ -260,9 +267,10 @@ export const mockLaterals: Asset[] = [
     maxGrade: (i % 5) + 1,
     geometry: {
       type: 'LineString' as const,
+      // Use NYC area coordinates to match manholes and pipes (40.7580, -73.9860)
       coordinates: [
-        [39.7817 + (i * 0.0005), -89.6501 - (i * 0.0005)],
-        [39.7818 + (i * 0.0005), -89.6502 - (i * 0.0005)]
+        [40.7580 + (Math.floor(i / 6) * 0.0015) + (i * 0.0001), -73.9860 + ((i % 6) * 0.0015) + (i * 0.0001)],
+        [40.7580 + (Math.floor(i / 6) * 0.0015) + (i * 0.0001) + 0.0003, -73.9860 + ((i % 6) * 0.0015) + (i * 0.0001) + 0.0003]
       ]
     }
   }))
