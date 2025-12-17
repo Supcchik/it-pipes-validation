@@ -125,7 +125,7 @@ interface DataTableProps {
   onRowClick: (asset: Asset) => void;
   onSort: (column: string, direction: 'asc' | 'desc') => void;
   onColumnReorder?: (newOrder: string[]) => void;
-  onUpdateAsset?: (assetId: string, updates: Partial<Asset>) => void; // НОВИЙ: для inline editing
+  onUpdateAsset?: (assetId: string, updates: Partial<Asset>) => void | Promise<void>; // НОВИЙ: для inline editing
   onStartEditing?: (assetId: string) => void; // НОВИЙ: для bulk edit з FloatingSelectionBar
   onDuplicate?: (asset: Asset) => void; // НОВИЙ: для duplicate action
   onDelete?: (asset: Asset) => void; // НОВИЙ: для delete action
@@ -462,7 +462,7 @@ export default function DataTable({
 
       // Save all fields
       const result = onUpdateAsset(editingRowId, editingValues);
-      if (result && typeof (result as { then?: unknown }).then === 'function') {
+      if (result && typeof result === 'object' && 'then' in result && typeof result.then === 'function') {
         await (result as Promise<void>);
       }
       
@@ -518,7 +518,7 @@ export default function DataTable({
       if (onUpdateAsset) {
         const result = onUpdateAsset(editingRowId, { [field]: value });
         // Handle both sync and async updates
-        if (result && typeof (result as { then?: unknown }).then === 'function') {
+        if (result && typeof result === 'object' && 'then' in result && typeof result.then === 'function') {
           await result;
         }
       }
