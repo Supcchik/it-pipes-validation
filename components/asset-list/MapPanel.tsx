@@ -262,7 +262,8 @@ export default function MapPanel({
       const distances: number[] = [];
       
       // Generate random distances ensuring minimum spacing
-      for (let i = 0; i < asset.observationCount; i++) {
+      const observationCount = asset.observationCount ?? 0;
+      for (let i = 0; i < observationCount; i++) {
         let distance: number;
         let attempts = 0;
         const maxAttempts = 50;
