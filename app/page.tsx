@@ -1508,26 +1508,6 @@ export default function AssetListPage() {
           // Clear selection after navigation
           setSelectedRows([]);
         }}
-        onOpenInTabs={() => {
-          // Legacy handler - kept for backward compatibility but not used
-          const selectedAssets = filteredAssets.filter(asset => selectedRows.includes(asset.id));
-          const count = selectedAssets.length;
-          
-          // Warning for many tabs
-          if (count > 10) {
-            const confirmed = confirm(
-              `Open ${count} tabs? This may slow down your browser.`
-            );
-            if (!confirmed) return;
-          }
-
-          // Open each asset in new tab with small delay
-          selectedAssets.forEach((asset, index) => {
-            setTimeout(() => {
-              window.open(`/inspection/${asset.id}`, '_blank');
-            }, index * 100); // 100ms delay between each to avoid browser blocking
-          });
-        }}
       />
 
       {/* Dialogs */}
