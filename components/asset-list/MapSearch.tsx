@@ -123,7 +123,7 @@ export default function MapSearch({ onAssetSelect }: MapSearchProps) {
         
         {!query.trim() && (
           <div className="p-4 text-center text-sm text-neutral-500">
-            Type to search the city's network
+            Type to search the city&apos;s network
           </div>
         )}
       </PopoverContent>
