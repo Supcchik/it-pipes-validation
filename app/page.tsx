@@ -944,7 +944,7 @@ export default function AssetListPage() {
           (inspectionUpdates as unknown as Record<string, unknown>)[field] = (updates as unknown as Record<string, unknown>)[field];
         } else if (column.table === 'observation') {
           if (field === 'observationCount' || field === 'hasDefects' || field === 'maxGrade') {
-            observationUpdates[field] = (updates as unknown as Record<string, unknown>)[field] as number | boolean | undefined;
+            (observationUpdates as unknown as Record<string, unknown>)[field] = (updates as unknown as Record<string, unknown>)[field] as number | boolean | undefined;
           }
         }
       });
