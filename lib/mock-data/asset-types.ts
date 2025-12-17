@@ -162,7 +162,7 @@ export const mockLaterals: Asset[] = [
       coordinates: [
         [40.7580, -73.9860],
         [40.7583, -73.9863]
-      ]
+      ] as [number, number][]
     }
   },
   {
@@ -198,7 +198,7 @@ export const mockLaterals: Asset[] = [
       coordinates: [
         [40.7580, -73.9860],
         [40.7584, -73.9864]
-      ]
+      ] as [number, number][]
     }
   },
   {
@@ -234,7 +234,7 @@ export const mockLaterals: Asset[] = [
       coordinates: [
         [40.7585, -73.9865],
         [40.7586, -73.9866]
-      ]
+      ] as [number, number][]
     }
   },
   // Generate more laterals
@@ -271,7 +271,7 @@ export const mockLaterals: Asset[] = [
       coordinates: [
         [40.7580 + (Math.floor(i / 6) * 0.0015) + (i * 0.0001), -73.9860 + ((i % 6) * 0.0015) + (i * 0.0001)],
         [40.7580 + (Math.floor(i / 6) * 0.0015) + (i * 0.0001) + 0.0003, -73.9860 + ((i % 6) * 0.0015) + (i * 0.0001) + 0.0003]
-      ]
+      ] as [number, number][]
     }
   }))
 ];
