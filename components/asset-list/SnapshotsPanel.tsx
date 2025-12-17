@@ -275,7 +275,7 @@ export default function SnapshotsPanel({
                           {/* Info */}
                           <div className="p-2.5 space-y-1 bg-white">
                             <div className="text-xs font-semibold text-neutral-900 flex items-center gap-1">
-                              <span>{snapshot.distance}'</span>
+                              <span>{snapshot.distance}&apos;</span>
                             </div>
                             <div className="text-xs font-medium text-neutral-700">
                               {snapshot.code}
