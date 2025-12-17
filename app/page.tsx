@@ -810,7 +810,7 @@ export default function AssetListPage() {
     
     const updatedView: View = {
       ...activeView,
-      advancedFilters: null,
+      advancedFilters: undefined,
       // НЕ перемикаємо на simple mode - залишаємо advanced mode
       updatedAt: new Date().toISOString().split('T')[0]
     };
