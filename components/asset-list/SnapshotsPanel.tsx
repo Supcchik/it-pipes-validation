@@ -49,7 +49,8 @@ function generateMockSnapshots(asset: Asset): SnapshotData[] {
   };
   
   // Generate snapshots based on observationCount
-  for (let i = 0; i < asset.observationCount; i++) {
+  const observationCount = asset.observationCount ?? 0;
+  for (let i = 0; i < observationCount; i++) {
     const distance = (i + 1) * 12; // 12', 24', 36', etc.
     const code = codes[i % codes.length];
     const grade = Math.min(5, Math.max(0, Math.floor(Math.random() * 6))) as 0 | 1 | 2 | 3 | 4 | 5;
