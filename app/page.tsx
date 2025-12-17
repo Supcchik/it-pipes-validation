@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import Header from '@/components/asset-list/Header';
@@ -38,7 +38,7 @@ import type { ReportConfig } from '@/lib/utils/pdf-generator';
 import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl, formatActiveTypes, areAllTypesSelected } from '@/lib/utils/asset-type-utils';
 import { getColumnsByType, getAllColumnsForTypes } from '@/lib/utils/column-schemas';
 
-export default function AssetListPage() {
+function AssetListPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
