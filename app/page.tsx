@@ -784,7 +784,7 @@ export default function AssetListPage() {
       ...activeView,
       groupFilters: updatedGroups.length > 0
         ? { type: 'groups', groups: updatedGroups }
-        : null,
+        : undefined,
       // НЕ перемикаємо на simple mode - залишаємо groups mode навіть якщо порожньо
       updatedAt: new Date().toISOString().split('T')[0]
     };
