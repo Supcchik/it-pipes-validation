@@ -153,23 +153,49 @@ export interface ColumnDef {
   minWidth?: number;
 }
 
+// Asset Type
+export type AssetType = 'ML' | 'MH' | 'L';
+
 // Asset Data
 export interface Asset {
   id: string;
-  pipeSegment: string;
+  asset_type: AssetType; // ML = Mainlines, MH = Manholes, L = Laterals
+  
+  // Common fields for all types
   project: string;
   city: string;
-  locationCode?: string;
-  locationDetails?: string;
   street: string;
-  upstreamMH: string;
-  downstreamMH: string;
+  
+  // Mainlines (ML) and Laterals (L) fields
+  pipeSegment?: string; // For ML
+  lateralId?: string; // For L
+  upstreamMH?: string; // For ML
+  downstreamMH?: string; // For ML
   pipeUse?: string;
   drainageArea?: string;
+  material?: string; // For ML and L
+  width?: number; // For ML and L (diameter in inches)
+  length?: number; // For L (typically shorter)
+  
+  // Manholes (MH) specific fields
+  manholeId?: string; // For MH
+  depth?: number; // For MH (in feet)
+  coverType?: 'Solid' | 'Vented' | 'Keyed'; // For MH
+  frameType?: 'Standard' | 'Heavy Duty' | 'Custom'; // For MH
+  condition?: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Failed'; // For MH
+  
+  // Laterals (L) specific fields
+  propertyAddress?: string; // For L
+  connectionPoint?: string; // For L (manhole or pipe ID)
+  serviceType?: 'Residential' | 'Commercial' | 'Industrial'; // For L
+  
+  // Common optional fields
+  locationCode?: string;
+  locationDetails?: string;
   yearConstructed?: number;
   yearRenewed?: number;
-  material: string;
-  width: number;
+  
+  // Inspection data (common for all types)
   latestInspection?: {
     id: string;
     certificateNumber: string;
@@ -183,12 +209,16 @@ export interface Asset {
     workOrder?: string;
     surveyedBy: string;
   };
-  observationCount: number;
-  hasDefects: boolean;
-  maxGrade?: number;
+  
+  // Observation data (for ML and L, not MH)
+  observationCount?: number;
+  hasDefects?: boolean;
+  maxGrade?: number; // 0-5 for ML/L
+  
+  // Geometry (for map display)
   geometry?: {
-    type: 'LineString';
-    coordinates: [number, number][];
+    type: 'LineString' | 'Point';
+    coordinates: [number, number][] | [number, number];
   };
 }
 

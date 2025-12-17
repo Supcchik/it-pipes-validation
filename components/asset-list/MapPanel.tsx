@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import type { Asset, FilterConfig, PlotPoint } from '@/lib/types/asset-list';
+import type { Asset, FilterConfig, PlotPoint, AssetType } from '@/lib/types/asset-list';
 import { MOCK_MANHOLES, MOCK_PIPE_SEGMENTS, getPipeSegmentByAssetId } from '@/lib/mock-data/mockMapData';
 import { calculatePlotPosition, calculatePipeLength } from '@/lib/utils/map-utils';
 import { type NetworkAsset } from './MapSearch';
@@ -25,6 +25,7 @@ interface MapPanelProps {
   filters?: FilterConfig[];
   onPlotPointClick?: (observationId: string) => void;
   onPipeClick?: (assetId: string) => void;
+  assetType?: AssetType; // Active asset type (ML, MH, or L)
 }
 
 // Style constants
@@ -49,7 +50,8 @@ export default function MapPanel({
   onAssetSelect,
   onMapClick,
   onPlotPointClick,
-  onPipeClick
+  onPipeClick,
+  assetType = 'ML' // Default to Mainlines
 }: MapPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -110,8 +112,18 @@ export default function MapPanel({
   const [hoveredPlotPoint, setHoveredPlotPoint] = useState<string | null>(null);
   const [visibleGrades, setVisibleGrades] = useState<number[]>([0, 1, 2, 3, 4, 5]);
 
-  // Get filtered asset IDs (if not provided, use all assets)
-  const effectiveFilteredAssetIds = filteredAssetIds || assets.map(a => a.id);
+  // Filter assets by active type
+  const assetsByType = useMemo(() => {
+    return assets.filter(asset => asset.asset_type === assetType);
+  }, [assets, assetType]);
+
+  // Get filtered asset IDs (if not provided, use all assets of current type)
+  const effectiveFilteredAssetIds = useMemo(() => {
+    const typeFiltered = assetsByType.map(a => a.id);
+    return filteredAssetIds 
+      ? filteredAssetIds.filter(id => typeFiltered.includes(id))
+      : typeFiltered;
+  }, [filteredAssetIds, assetsByType]);
 
   // Auto-zoom helper function
   const autoZoomToAssets = useCallback((assetIds: string[]) => {
@@ -120,24 +132,26 @@ export default function MapPanel({
     // Get all coordinates for these assets
     const coordinates: { lat: number; lng: number }[] = [];
 
-    // Get pipes for these assets
-    assetIds.forEach(assetId => {
-      const pipe = getPipeSegmentByAssetId(assetId);
-      if (pipe) {
-        coordinates.push(...pipe.coordinates);
-      }
-    });
+    // Get pipes for these assets (ML and L)
+    if (assetType === 'ML' || assetType === 'L') {
+      assetIds.forEach(assetId => {
+        const pipe = getPipeSegmentByAssetId(assetId);
+        if (pipe) {
+          coordinates.push(...pipe.coordinates);
+        }
+      });
+    }
 
-    // Get manholes for these assets
-    assetIds.forEach(assetId => {
-      const asset = assets.find(a => a.id === assetId);
-      if (asset) {
-        const upstreamMH = MOCK_MANHOLES.find(m => m.name === asset.upstreamMH);
-        const downstreamMH = MOCK_MANHOLES.find(m => m.name === asset.downstreamMH);
-        if (upstreamMH) coordinates.push(upstreamMH.coordinates);
-        if (downstreamMH) coordinates.push(downstreamMH.coordinates);
-      }
-    });
+    // Get manholes for these assets (MH)
+    if (assetType === 'MH') {
+      assetIds.forEach(assetId => {
+        const asset = assetsByType.find(a => a.id === assetId);
+        if (asset && asset.geometry && asset.geometry.type === 'Point') {
+          const coords = asset.geometry.coordinates as [number, number];
+          coordinates.push({ lat: coords[0], lng: coords[1] });
+        }
+      });
+    }
 
     if (coordinates.length === 0) return;
 
@@ -168,7 +182,7 @@ export default function MapPanel({
 
     setCenter({ lat: centerLat, lng: centerLng });
     setZoom(newZoom);
-  }, [assets]);
+  }, [assetsByType, assetType]);
 
   // Track previous values to avoid unnecessary zooms
   const prevFilteredRef = useRef<string>('');
@@ -524,18 +538,39 @@ export default function MapPanel({
       ctx.stroke();
     }
 
-    // Draw pipe segments first
-    if (layers.sewerLines) {
+    // Determine which types are active/inactive
+    const isMLActive = assetType === 'ML';
+    const isLActive = assetType === 'L';
+    const isMHActive = assetType === 'MH';
+    
+    // Draw pipe segments (for ML and L)
+    if (layers.sewerLines && (isMLActive || isLActive)) {
       MOCK_PIPE_SEGMENTS.forEach(pipe => {
-        const isSelected = selectedAssetIds.includes(pipe.assetId);
-        const isFiltered = !effectiveFilteredAssetIds.includes(pipe.assetId);
-        const isHovered = hoveredItem?.type === 'pipe' && hoveredItem.id === pipe.id;
+        // Check if this pipe belongs to current asset type
+        const pipeAsset = assetsByType.find(a => a.id === pipe.assetId);
+        const isActiveType = pipeAsset !== undefined;
+        
+        // For inactive types, show as gray background
+        if (!isActiveType && (assetType === 'MH')) {
+          // Draw inactive pipes (gray, thin, low opacity)
+          ctx.strokeStyle = '#D1D5DB';
+          ctx.lineWidth = 1;
+          ctx.globalAlpha = 0.5;
+        } else if (!isActiveType) {
+          // Not current type and not MH - skip
+          return;
+        } else {
+          // Active type - normal styling
+          const isSelected = selectedAssetIds.includes(pipe.assetId);
+          const isFiltered = !effectiveFilteredAssetIds.includes(pipe.assetId);
+          const isHovered = hoveredItem?.type === 'pipe' && hoveredItem.id === pipe.id;
 
-        if (isFiltered) return; // Don't draw filtered out items
+          if (isFiltered) return; // Don't draw filtered out items
 
-        ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : PIPE_STYLES.default.stroke;
-        ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : PIPE_STYLES.default.strokeWidth;
-        ctx.globalAlpha = PIPE_STYLES.default.opacity;
+          ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : PIPE_STYLES.default.stroke;
+          ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : PIPE_STYLES.default.strokeWidth;
+          ctx.globalAlpha = PIPE_STYLES.default.opacity;
+        }
 
         ctx.beginPath();
         pipe.coordinates.forEach((coord, index) => {
@@ -546,8 +581,8 @@ export default function MapPanel({
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Draw labels and asset IDs if enabled
-        if (displayOptions.showLabels || displayOptions.showAssetIds) {
+        // Draw labels and asset IDs if enabled (only for active types)
+        if (isActiveType && (displayOptions.showLabels || displayOptions.showAssetIds)) {
           // Find midpoint of pipe for label placement
           const midIndex = Math.floor(pipe.coordinates.length / 2);
           const midCoord = pipe.coordinates[midIndex];
@@ -561,9 +596,11 @@ export default function MapPanel({
           
           let labelText = '';
           if (displayOptions.showLabels) {
-            const asset = assets.find(a => a.id === pipe.assetId);
+            const asset = assetsByType.find(a => a.id === pipe.assetId);
             if (asset?.pipeSegment) {
               labelText = asset.pipeSegment;
+            } else if (asset?.lateralId) {
+              labelText = asset.lateralId;
             }
           }
           if (displayOptions.showAssetIds) {
@@ -581,15 +618,91 @@ export default function MapPanel({
           ctx.restore();
         }
       });
+      
+      // Draw laterals from their geometry (for L type)
+      if (isLActive) {
+        assetsByType.forEach(asset => {
+          if (asset.asset_type === 'L' && asset.geometry && asset.geometry.type === 'LineString') {
+            const isSelected = selectedAssetIds.includes(asset.id);
+            const isFiltered = !effectiveFilteredAssetIds.includes(asset.id);
+            const isHovered = hoveredItem?.type === 'pipe' && hoveredItem.id === asset.id;
+
+            if (isFiltered) return;
+
+            ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : '#8B5CF6'; // Purple for laterals
+            ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : 2; // Thinner for laterals
+            ctx.globalAlpha = PIPE_STYLES.default.opacity;
+
+            const coords = asset.geometry.coordinates as [number, number][];
+            ctx.beginPath();
+            coords.forEach((coord, index) => {
+              const { x, y } = latLngToXY(coord[0], coord[1]);
+              if (index === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+
+            // Draw labels if enabled
+            if (displayOptions.showLabels || displayOptions.showAssetIds) {
+              const midIndex = Math.floor(coords.length / 2);
+              const midCoord = coords[midIndex];
+              const { x, y } = latLngToXY(midCoord[0], midCoord[1]);
+              
+              ctx.save();
+              ctx.fillStyle = '#1F2937';
+              ctx.font = '11px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              
+              let labelText = '';
+              if (displayOptions.showLabels && asset.lateralId) {
+                labelText = asset.lateralId;
+              }
+              if (displayOptions.showAssetIds) {
+                if (labelText) labelText += ` (${asset.id})`;
+                else labelText = asset.id;
+              }
+              
+              if (labelText) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(x - ctx.measureText(labelText).width / 2 - 4, y - 8, ctx.measureText(labelText).width + 8, 16);
+                ctx.fillStyle = '#1F2937';
+                ctx.fillText(labelText, x, y);
+              }
+              ctx.restore();
+            }
+          }
+        });
+      }
     }
 
     // Draw manholes
     if (layers.manholes) {
       MOCK_MANHOLES.forEach(manhole => {
-        // Check if any asset using this manhole is selected/filtered
-        const relatedAssets = assets.filter(a => 
-          a.upstreamMH === manhole.name || a.downstreamMH === manhole.name
+        // Check if any asset using this manhole matches current type
+        const relatedAssets = assetsByType.filter(a => 
+          a.upstreamMH === manhole.name || a.downstreamMH === manhole.name || a.manholeId === manhole.name
         );
+        const isActiveType = relatedAssets.length > 0;
+        
+        // For inactive types, show as gray background
+        if (!isActiveType && (assetType === 'ML' || assetType === 'L')) {
+          // Draw inactive manholes (gray, small, low opacity)
+          const { x, y } = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, 2 * Math.PI);
+          ctx.fillStyle = '#D1D5DB';
+          ctx.globalAlpha = 0.5;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          return;
+        } else if (!isActiveType) {
+          // Not current type and not ML/L - skip
+          return;
+        }
+        
+        // Active type - normal styling
         const isInFiltered = relatedAssets.some(a => effectiveFilteredAssetIds.includes(a.id));
         const isSelected = relatedAssets.some(a => selectedAssetIds.includes(a.id));
         const isHovered = hoveredItem?.type === 'manhole' && hoveredItem.id === manhole.id;
@@ -611,7 +724,7 @@ export default function MapPanel({
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Draw labels if enabled
+        // Draw labels if enabled (only for active types)
         if (displayOptions.showLabels) {
           ctx.save();
           ctx.fillStyle = '#1F2937';
@@ -664,7 +777,7 @@ export default function MapPanel({
       ctx.strokeRect(selectionStart.x, selectionStart.y, width, height);
       ctx.setLineDash([]);
     }
-  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assets, plotPoints, visibleGrades, hoveredPlotPoint, drawHeatMapOverlay, displayOptions]);
+  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assetsByType, plotPoints, visibleGrades, hoveredPlotPoint, drawHeatMapOverlay, displayOptions, assetType]);
 
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -706,13 +819,20 @@ export default function MapPanel({
       // Mark that we clicked on a feature to prevent onMapClick in handleMouseUp
       setClickedOnFeature(true);
       
-      // If clicked on pipe segment, trigger pipe click callback
+      // If clicked on pipe segment or lateral, trigger pipe click callback
       if (clickedFeature.type === 'pipe' && onPipeClick) {
-        // Find assetId for this pipe
+        // Check if it's from MOCK_PIPE_SEGMENTS (ML) or from asset geometry (L)
         const pipe = MOCK_PIPE_SEGMENTS.find(p => p.id === clickedFeature.id);
         if (pipe && pipe.assetId) {
           onPipeClick(pipe.assetId);
-          // Reset flag after a short delay to allow state updates
+          setTimeout(() => setClickedOnFeature(false), 100);
+          return;
+        }
+        
+        // Check if it's a lateral (L type)
+        const lateralAsset = assetsByType.find(a => a.id === clickedFeature.id && a.asset_type === 'L');
+        if (lateralAsset) {
+          onPipeClick(lateralAsset.id);
           setTimeout(() => setClickedOnFeature(false), 100);
           return;
         }
@@ -821,14 +941,15 @@ export default function MapPanel({
     }
   };
 
-  // Feature detection
+  // Feature detection (only for active asset type)
   const detectFeatureAtPoint = (x: number, y: number): { type: 'manhole' | 'pipe'; id: string } | null => {
-    // Check manholes
-    for (const manhole of MOCK_MANHOLES) {
-      const relatedAssets = assets.filter(a => 
-        a.upstreamMH === manhole.name || a.downstreamMH === manhole.name
-      );
-      if (!relatedAssets.some(a => effectiveFilteredAssetIds.includes(a.id))) continue;
+    // Check manholes (only if MH is active)
+    if (assetType === 'MH') {
+      for (const manhole of MOCK_MANHOLES) {
+        const relatedAssets = assetsByType.filter(a => 
+          a.upstreamMH === manhole.name || a.downstreamMH === manhole.name || a.manholeId === manhole.name
+        );
+        if (!relatedAssets.some(a => effectiveFilteredAssetIds.includes(a.id))) continue;
       
       const pos = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
       const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
@@ -837,49 +958,107 @@ export default function MapPanel({
         return { type: 'manhole', id: manhole.id };
       }
     }
+    }
 
-    // Check pipes - check distance to entire pipe line, not just midpoint
-    for (const pipe of MOCK_PIPE_SEGMENTS) {
-      if (!effectiveFilteredAssetIds.includes(pipe.assetId)) continue;
-      
-      // Check distance to each segment of the pipe
-      for (let i = 0; i < pipe.coordinates.length - 1; i++) {
-        const startCoord = pipe.coordinates[i];
-        const endCoord = pipe.coordinates[i + 1];
-        const startXY = latLngToXY(startCoord.lat, startCoord.lng);
-        const endXY = latLngToXY(endCoord.lat, endCoord.lng);
+    // Check pipes and laterals (only if ML or L is active)
+    if (assetType === 'ML' || assetType === 'L') {
+      // Check MOCK_PIPE_SEGMENTS (for ML)
+      if (assetType === 'ML') {
+        for (const pipe of MOCK_PIPE_SEGMENTS) {
+          // Check if this pipe belongs to current asset type
+          const pipeAsset = assetsByType.find(a => a.id === pipe.assetId);
+          if (!pipeAsset || !effectiveFilteredAssetIds.includes(pipe.assetId)) continue;
         
-        // Calculate distance from point to line segment
-        const A = x - startXY.x;
-        const B = y - startXY.y;
-        const C = endXY.x - startXY.x;
-        const D = endXY.y - startXY.y;
-        
-        const dot = A * C + B * D;
-        const lenSq = C * C + D * D;
-        let param = -1;
-        if (lenSq !== 0) param = dot / lenSq;
-        
-        let xx: number, yy: number;
-        
-        if (param < 0) {
-          xx = startXY.x;
-          yy = startXY.y;
-        } else if (param > 1) {
-          xx = endXY.x;
-          yy = endXY.y;
-        } else {
-          xx = startXY.x + param * C;
-          yy = startXY.y + param * D;
+        // Check distance to each segment of the pipe
+        for (let i = 0; i < pipe.coordinates.length - 1; i++) {
+          const startCoord = pipe.coordinates[i];
+          const endCoord = pipe.coordinates[i + 1];
+          const startXY = latLngToXY(startCoord.lat, startCoord.lng);
+          const endXY = latLngToXY(endCoord.lat, endCoord.lng);
+          
+          // Calculate distance from point to line segment
+          const A = x - startXY.x;
+          const B = y - startXY.y;
+          const C = endXY.x - startXY.x;
+          const D = endXY.y - startXY.y;
+          
+          const dot = A * C + B * D;
+          const lenSq = C * C + D * D;
+          let param = -1;
+          if (lenSq !== 0) param = dot / lenSq;
+          
+          let xx: number, yy: number;
+          
+          if (param < 0) {
+            xx = startXY.x;
+            yy = startXY.y;
+          } else if (param > 1) {
+            xx = endXY.x;
+            yy = endXY.y;
+          } else {
+            xx = startXY.x + param * C;
+            yy = startXY.y + param * D;
+          }
+          
+          const dx = x - xx;
+          const dy = y - yy;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Clickable area: 15 pixels from the line
+          if (distance <= 15) {
+            return { type: 'pipe', id: pipe.id };
+          }
         }
-        
-        const dx = x - xx;
-        const dy = y - yy;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Clickable area: 15 pixels from the line
-        if (distance <= 15) {
-        return { type: 'pipe', id: pipe.id };
+      }
+      }
+      
+      // Check laterals from geometry (for L)
+      if (assetType === 'L') {
+        for (const asset of assetsByType) {
+          if (asset.asset_type === 'L' && asset.geometry && asset.geometry.type === 'LineString' && effectiveFilteredAssetIds.includes(asset.id)) {
+            const coords = asset.geometry.coordinates as [number, number][];
+            
+            // Check distance to each segment
+            for (let i = 0; i < coords.length - 1; i++) {
+              const startCoord = coords[i];
+              const endCoord = coords[i + 1];
+              const startXY = latLngToXY(startCoord[0], startCoord[1]);
+              const endXY = latLngToXY(endCoord[0], endCoord[1]);
+              
+              // Calculate distance from point to line segment
+              const A = x - startXY.x;
+              const B = y - startXY.y;
+              const C = endXY.x - startXY.x;
+              const D = endXY.y - startXY.y;
+              
+              const dot = A * C + B * D;
+              const lenSq = C * C + D * D;
+              let param = -1;
+              if (lenSq !== 0) param = dot / lenSq;
+              
+              let xx: number, yy: number;
+              
+              if (param < 0) {
+                xx = startXY.x;
+                yy = startXY.y;
+              } else if (param > 1) {
+                xx = endXY.x;
+                yy = endXY.y;
+              } else {
+                xx = startXY.x + param * C;
+                yy = startXY.y + param * D;
+              }
+              
+              const dx = x - xx;
+              const dy = y - yy;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              
+              // Clickable area: 15 pixels from the line
+              if (distance <= 15) {
+                return { type: 'pipe', id: asset.id };
+              }
+            }
+          }
         }
       }
     }
@@ -898,12 +1077,13 @@ export default function MapPanel({
 
     const selectedIds: string[] = [];
 
-    // Check manholes in box
-    MOCK_MANHOLES.forEach(manhole => {
-      const relatedAssets = assets.filter(a => 
-        a.upstreamMH === manhole.name || a.downstreamMH === manhole.name
-      );
-      if (!relatedAssets.some(a => effectiveFilteredAssetIds.includes(a.id))) return;
+    // Check manholes in box (only if MH is active)
+    if (assetType === 'MH') {
+      MOCK_MANHOLES.forEach(manhole => {
+        const relatedAssets = assetsByType.filter(a => 
+          a.upstreamMH === manhole.name || a.downstreamMH === manhole.name || a.manholeId === manhole.name
+        );
+        if (!relatedAssets.some(a => effectiveFilteredAssetIds.includes(a.id))) return;
       
       const pos = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
       if (pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY) {
@@ -914,20 +1094,45 @@ export default function MapPanel({
         });
       }
     });
+    }
 
-    // Check pipes in box
-    MOCK_PIPE_SEGMENTS.forEach(pipe => {
-      if (!effectiveFilteredAssetIds.includes(pipe.assetId)) return;
-      
-      const inBox = pipe.coordinates.some(coord => {
-        const pos = latLngToXY(coord.lat, coord.lng);
-        return pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY;
+    // Check pipes and laterals in box (only if ML or L is active)
+    if (assetType === 'ML' || assetType === 'L') {
+      // Check MOCK_PIPE_SEGMENTS (for ML)
+      if (assetType === 'ML') {
+        MOCK_PIPE_SEGMENTS.forEach(pipe => {
+          // Check if this pipe belongs to current asset type
+          const pipeAsset = assetsByType.find(a => a.id === pipe.assetId);
+          if (!pipeAsset || !effectiveFilteredAssetIds.includes(pipe.assetId)) return;
+        
+        const inBox = pipe.coordinates.some(coord => {
+          const pos = latLngToXY(coord.lat, coord.lng);
+          return pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY;
+        });
+        
+        if (inBox && !selectedIds.includes(pipe.assetId)) {
+          selectedIds.push(pipe.assetId);
+        }
       });
-      
-      if (inBox && !selectedIds.includes(pipe.assetId)) {
-        selectedIds.push(pipe.assetId);
       }
-    });
+      
+      // Check laterals from geometry (for L)
+      if (assetType === 'L') {
+        assetsByType.forEach(asset => {
+          if (asset.asset_type === 'L' && asset.geometry && asset.geometry.type === 'LineString' && effectiveFilteredAssetIds.includes(asset.id)) {
+            const coords = asset.geometry.coordinates as [number, number][];
+            const inBox = coords.some(coord => {
+              const pos = latLngToXY(coord[0], coord[1]);
+              return pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY;
+            });
+            
+            if (inBox && !selectedIds.includes(asset.id)) {
+              selectedIds.push(asset.id);
+            }
+          }
+        });
+      }
+    }
 
     onAssetSelect(selectedIds);
     setSelectionTool(null);
@@ -1202,7 +1407,7 @@ export default function MapPanel({
               </div>
             )}
           </div>
-      </div>
+          </div>
 
           {/* Floating Settings Button - Top Right */}
         <Popover>

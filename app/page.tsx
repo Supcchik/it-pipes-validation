@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import Header from '@/components/asset-list/Header';
 import ViewTabs from '@/components/asset-list/ViewTabs';
 import Toolbar from '@/components/asset-list/Toolbar';
@@ -30,12 +31,16 @@ import DeleteConfirmDialog from '@/components/asset-list/DeleteConfirmDialog';
 import RemoveFilterConfirmDialog from '@/components/asset-list/RemoveFilterConfirmDialog';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
-import type { View, Asset, ColumnDef, FilterConfig } from '@/lib/types/asset-list';
+import { mockAssetCounts, getAssetsByType } from '@/lib/mock-data/asset-types';
+import type { View, Asset, ColumnDef, FilterConfig, AssetType } from '@/lib/types/asset-list';
 import { normalizeFilters, applyFilters } from '@/lib/utils/filter-utils';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
+import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl } from '@/lib/utils/asset-type-utils';
+import { getColumnsByType } from '@/lib/utils/column-schemas';
 
 export default function AssetListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // State management
   const [views, setViews] = useState<View[]>(() => {
@@ -49,14 +54,59 @@ export default function AssetListPage() {
   const [activeViewId, setActiveViewId] = useState<string>(() => {
     return mockViews.length > 0 ? mockViews[0].id : 'default';
   });
-  const [assets, setAssets] = useState<Asset[]>(() => {
+  
+  // Asset Type Management - read from URL on mount
+  const [activeAssetType, setActiveAssetType] = useState<AssetType>(() => {
+    // Read from URL on initial mount
+    if (typeof window !== 'undefined') {
+      const typeParam = searchParams.get('type');
+      return normalizeAssetTypeFromUrl(typeParam);
+    }
+    return 'ML'; // SSR fallback
+  });
+  const [assetTypeLoading, setAssetTypeLoading] = useState(false);
+  
+  // Per-type state preservation
+  interface TypeState {
+    filters: FilterConfig[];
+    sort: { field: string; direction: 'asc' | 'desc' } | null;
+    columns: string[]; // visible column IDs
+  }
+  
+  const [typeStates, setTypeStates] = useState<{
+    ML: TypeState;
+    MH: TypeState;
+    L: TypeState;
+  }>({
+    ML: { filters: [], sort: null, columns: [] },
+    MH: { filters: [], sort: null, columns: [] },
+    L: { filters: [], sort: null, columns: [] }
+  });
+
+  // All assets (combined from all types, will be filtered by activeAssetType)
+  const [allAssets, setAllAssets] = useState<Asset[]>(() => {
     try {
-      return mockAssets;
+      // Combine all asset types
+      const mlAssets = mockAssets.map(a => ({ ...a, asset_type: 'ML' as const }));
+      const mhAssets = getAssetsByType('MH', mlAssets);
+      const lAssets = getAssetsByType('L', mlAssets);
+      return [...mlAssets, ...mhAssets, ...lAssets];
     } catch (error) {
       console.error('Error loading mock assets:', error);
       return [];
     }
   });
+
+  // Current assets filtered by active type
+  const [assets, setAssets] = useState<Asset[]>(() => {
+    try {
+      return getAssetsByType('ML', mockAssets);
+    } catch (error) {
+      console.error('Error loading mock assets:', error);
+      return [];
+    }
+  });
+  
   const [simpleSearchResults, setSimpleSearchResults] = useState<Asset[] | null>(null); // НОВИЙ: null = no search, [] = no results, [assets] = results
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedAssetForSnapshots, setSelectedAssetForSnapshots] = useState<Asset | null>(null);
@@ -131,19 +181,268 @@ export default function AssetListPage() {
     return views[0];
   }, [views, activeViewId]);
 
+  // Load assets when asset type changes
+  useEffect(() => {
+    setAssetTypeLoading(true);
+    
+    // Simulate API call delay (200-300ms)
+    const timer = setTimeout(() => {
+      const typeAssets = getAssetsByType(activeAssetType, mockAssets);
+      setAssets(typeAssets);
+      setAssetTypeLoading(false);
+    }, 250);
+    
+    return () => clearTimeout(timer);
+  }, [activeAssetType]);
+
+  // Handle asset type change
+  const handleAssetTypeChange = (newType: AssetType) => {
+    if (newType === activeAssetType) return;
+    
+    if (!activeView) {
+      // If no view, just switch type
+      setActiveAssetType(newType);
+      setSelectedRows([]);
+      setSelectedAssetForSnapshots(null);
+      setHighlightedSnapshotId(null);
+      setSimpleSearchResults(null);
+      setSearchQuery(null);
+      return;
+    }
+    
+    // Get all filters from view (handle different filter modes)
+    const allFilters: FilterConfig[] = [];
+    if (activeView.simpleFilters?.conditions) {
+      allFilters.push(...activeView.simpleFilters.conditions);
+    } else if (activeView.groupFilters?.groups) {
+      activeView.groupFilters.groups.forEach(group => {
+        allFilters.push(...group.conditions);
+      });
+    } else if (activeView.advancedFilters?.groups) {
+      activeView.advancedFilters.groups.forEach(group => {
+        allFilters.push(...group.conditions);
+      });
+    } else if (activeView.filters) {
+      allFilters.push(...activeView.filters);
+    }
+    
+    // Also include temporary filters
+    const allFiltersIncludingTemp = [...allFilters, ...temporaryFilters];
+    
+    // Find inapplicable filters for new type
+    const inapplicableFilters = getInapplicableFilters(allFiltersIncludingTemp, newType);
+    
+    // Save current type state (before removing filters)
+    setTypeStates(prev => ({
+      ...prev,
+      [activeAssetType]: {
+        filters: allFilters,
+        sort: activeView.sortBy ? { field: activeView.sortBy, direction: activeView.sortDirection || 'asc' } : null,
+        columns: activeView.displayedColumns || []
+      }
+    }));
+    
+    // Remove inapplicable filters from view
+    if (inapplicableFilters.length > 0 && activeView) {
+      // Remove from simple filters
+      if (activeView.simpleFilters) {
+        const updatedSimpleFilters = {
+          ...activeView.simpleFilters,
+          conditions: activeView.simpleFilters.conditions.filter(
+            f => !inapplicableFilters.some(inf => inf.id === f.id)
+          )
+        };
+        const updatedView: View = {
+          ...activeView,
+          simpleFilters: updatedSimpleFilters,
+          filters: updatedSimpleFilters.conditions, // Sync with legacy filters
+          updatedAt: new Date().toISOString().split('T')[0]
+        };
+        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+      }
+      // Remove from group filters
+      else if (activeView.groupFilters) {
+        const updatedGroups = activeView.groupFilters.groups.map(group => ({
+          ...group,
+          conditions: group.conditions.filter(
+            f => !inapplicableFilters.some(inf => inf.id === f.id)
+          )
+        })).filter(group => group.conditions.length > 0);
+        
+        const updatedView: View = {
+          ...activeView,
+          groupFilters: updatedGroups.length > 0 
+            ? { type: 'groups', groups: updatedGroups }
+            : null,
+          updatedAt: new Date().toISOString().split('T')[0]
+        };
+        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+      }
+      // Remove from advanced filters
+      else if (activeView.advancedFilters) {
+        const updatedGroups = activeView.advancedFilters.groups.map(group => ({
+          ...group,
+          conditions: group.conditions.filter(
+            f => !inapplicableFilters.some(inf => inf.id === f.id)
+          )
+        })).filter(group => group.conditions.length > 0);
+        
+        const updatedView: View = {
+          ...activeView,
+          advancedFilters: updatedGroups.length > 0
+            ? { type: 'advanced', groups: updatedGroups }
+            : null,
+          updatedAt: new Date().toISOString().split('T')[0]
+        };
+        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+      }
+      // Remove from legacy filters
+      else if (activeView.filters) {
+        const updatedFilters = activeView.filters.filter(
+          f => !inapplicableFilters.some(inf => inf.id === f.id)
+        );
+        const updatedView: View = {
+          ...activeView,
+          filters: updatedFilters,
+          updatedAt: new Date().toISOString().split('T')[0]
+        };
+        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+      }
+      
+      // Remove from temporary filters
+      const updatedTempFilters = temporaryFilters.filter(
+        f => !inapplicableFilters.some(inf => inf.id === f.id)
+      );
+      setTemporaryFilters(updatedTempFilters);
+      
+      // Show toast notification
+      const newTypeColumns = getColumnsByType(newType);
+      const filterNames = inapplicableFilters.map(f => {
+        // Try to get a readable name for the filter
+        const column = newTypeColumns.find(col => col.field === f.field);
+        return column?.label || f.field;
+      }).join(', ');
+      
+      toast.info(`${inapplicableFilters.length} filter${inapplicableFilters.length > 1 ? 's' : ''} removed`, {
+        description: `Not applicable to ${getAssetTypeLabel(newType)}. ${filterNames ? `Removed: ${filterNames}` : ''}`,
+        duration: 4000
+      });
+    }
+    
+    // Restore state for new type (if any was saved)
+    const savedState = typeStates[newType];
+    if (savedState && activeView) {
+      // Restore filters, sort, and columns
+      const updatedView: View = {
+        ...activeView,
+        simpleFilters: savedState.filters.length > 0 ? {
+          type: 'simple',
+          conditions: savedState.filters
+        } : undefined,
+        filters: savedState.filters, // Sync with legacy
+        sortBy: savedState.sort?.field,
+        sortDirection: savedState.sort?.direction,
+        displayedColumns: savedState.columns.length > 0 
+          ? savedState.columns 
+          : getColumnsByType(newType).slice(0, 8).map(col => col.id), // Default if no saved columns
+        columnOrder: savedState.columns.length > 0 
+          ? savedState.columns 
+          : getColumnsByType(newType).slice(0, 8).map(col => col.id),
+        updatedAt: new Date().toISOString().split('T')[0]
+      };
+      setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+    } else if (activeView) {
+      // No saved state - reset to defaults for new type
+      const defaultColumns = getColumnsByType(newType).slice(0, 8).map(col => col.id);
+      const updatedView: View = {
+        ...activeView,
+        simpleFilters: undefined,
+        filters: [],
+        sortBy: undefined,
+        sortDirection: undefined,
+        displayedColumns: defaultColumns,
+        columnOrder: defaultColumns,
+        updatedAt: new Date().toISOString().split('T')[0]
+      };
+      setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+    }
+    
+    // Clear selection
+    setSelectedRows([]);
+    setSelectedAssetForSnapshots(null);
+    setHighlightedSnapshotId(null);
+    
+    // Clear search
+    setSimpleSearchResults(null);
+    setSearchQuery(null);
+    
+    // Reset to first page
+    setCurrentPage(1);
+    
+    // Update active type
+    setActiveAssetType(newType);
+    
+    // Update URL with new type (preserve other query params)
+    const currentParams = new URLSearchParams(searchParams.toString());
+    currentParams.set('type', assetTypeToUrl(newType));
+    router.push(`?${currentParams.toString()}`, { scroll: false });
+  };
+  
+  // Sync URL with asset type changes (browser back/forward navigation)
+  useEffect(() => {
+    const urlType = searchParams.get('type');
+    const normalizedUrlType = normalizeAssetTypeFromUrl(urlType);
+    
+    // Check if URL has invalid type (fallback to ML)
+    if (urlType && normalizedUrlType === 'ML' && urlType.toLowerCase() !== 'ml') {
+      // Invalid type in URL - show notification and update URL
+      toast.warning('Invalid asset type in URL', {
+        description: `Type "${urlType}" is not valid. Defaulting to Mainlines.`,
+        duration: 3000
+      });
+      const currentParams = new URLSearchParams(searchParams.toString());
+      currentParams.set('type', 'ml');
+      router.replace(`?${currentParams.toString()}`, { scroll: false });
+      return;
+    }
+    
+    // Only update if URL type differs from current state (avoid loops)
+    if (normalizedUrlType !== activeAssetType) {
+      // URL changed (e.g., browser back button) - update state
+      // But don't call handleAssetTypeChange to avoid triggering URL update again
+      setActiveAssetType(normalizedUrlType);
+      // Also trigger asset loading for new type
+      setAssetTypeLoading(true);
+      setTimeout(() => {
+        const typeAssets = getAssetsByType(normalizedUrlType, mockAssets);
+        setAssets(typeAssets);
+        setAssetTypeLoading(false);
+      }, 250);
+      setSelectedRows([]);
+      setSelectedAssetForSnapshots(null);
+      setHighlightedSnapshotId(null);
+      setSimpleSearchResults(null);
+      setSearchQuery(null);
+      setCurrentPage(1);
+    }
+  }, [searchParams, activeAssetType, router]); // React to URL changes (browser back/forward)
+
   // Filter assets based on simple search, active view filters (normalized) and advanced search query
   const filteredAssets = useMemo(() => {
+    // Filter by asset type first
+    const typeFiltered = assets.filter(asset => asset.asset_type === activeAssetType);
+    
     // Start with simple search results (or all assets if no simple search active)
     // simpleSearchResults === null means no search active, use all assets
     // simpleSearchResults === [] means search active but no results found (return empty)
     // simpleSearchResults === [assets] means search active with results
     let filtered: Asset[];
     if (simpleSearchResults === null) {
-      // No search active, use all assets
-      filtered = [...assets];
+      // No search active, use all assets of current type
+      filtered = [...typeFiltered];
     } else {
-      // Search active - use results (even if empty array)
-      filtered = [...simpleSearchResults];
+      // Search active - use results filtered by type (even if empty array)
+      filtered = simpleSearchResults.filter(asset => asset.asset_type === activeAssetType);
     }
     
     if (!filtered || filtered.length === 0) {
@@ -234,28 +533,52 @@ export default function AssetListPage() {
     }
 
     return filtered;
-  }, [simpleSearchResults, activeView, searchQuery, assets]);
+  }, [simpleSearchResults, activeView, searchQuery, assets, activeAssetType, temporaryFilters]);
 
-  // Get columns for active view in correct order
+  // Get columns for active asset type
+  const availableColumnsForType = useMemo(() => {
+    return getColumnsByType(activeAssetType);
+  }, [activeAssetType]);
+
+  // Get columns for active view in correct order, filtered by asset type
   const displayedColumns = useMemo(() => {
-    if (!activeView || !activeView.displayedColumns || !mockColumnDefs) {
-      return [];
+    if (!activeView) {
+      // If no view, return default columns for current asset type
+      return availableColumnsForType.slice(0, 8); // Default: first 8 columns
     }
+    
     try {
+      // Get available columns for current asset type
+      const typeColumns = availableColumnsForType;
+      
+      // Get saved columns from view (if any) that match current type
+      const savedColumns = activeView.displayedColumns || [];
+      
+      // Filter saved columns to only include those available for current type
+      const validSavedColumns = savedColumns.filter(colId => 
+        typeColumns.some(col => col.id === colId)
+      );
+      
+      // If no valid saved columns, use default columns for type
+      const columnsToShow = validSavedColumns.length > 0 
+        ? validSavedColumns 
+        : typeColumns.slice(0, 8).map(col => col.id); // Default: first 8 columns
+      
       // Use columnOrder if available, otherwise use displayedColumns order
       const order = activeView.columnOrder && activeView.columnOrder.length > 0
-        ? activeView.columnOrder
-        : activeView.displayedColumns;
+        ? activeView.columnOrder.filter(colId => typeColumns.some(col => col.id === colId))
+        : columnsToShow;
       
       // Map to ColumnDef objects in the correct order
       return order
-        .map(colId => mockColumnDefs.find(col => col.id === colId))
+        .map(colId => typeColumns.find(col => col.id === colId))
         .filter((col): col is ColumnDef => col !== undefined);
     } catch (error) {
       console.error('Error filtering columns:', error);
-      return [];
+      // Fallback to default columns for type
+      return availableColumnsForType.slice(0, 8);
     }
-  }, [activeView]);
+  }, [activeView, availableColumnsForType]);
 
   // Calculate pagination
   const totalItems = filteredAssets.length;
@@ -933,6 +1256,10 @@ export default function AssetListPage() {
           onCopyToProject={() => setCopyToProjectDialogOpen(true)}
           visibleColumnsCount={displayedColumns?.length || 0}
           filters={activeView?.filters || []}
+          activeAssetType={activeAssetType}
+          assetCounts={mockAssetCounts}
+          onAssetTypeChange={handleAssetTypeChange}
+          assetTypeLoading={assetTypeLoading}
         />
 
         <ActiveFiltersBar
@@ -1007,6 +1334,7 @@ export default function AssetListPage() {
                     assets={filteredAssets}
                     selectedAssetIds={selectedRows}
                     filteredAssetIds={filteredAssets.map(a => a.id)}
+                    assetType={activeAssetType}
                     onAssetSelect={(ids) => {
                       setSelectedRows(ids);
                       // Scroll to first selected row in table
@@ -1066,14 +1394,15 @@ export default function AssetListPage() {
                   <SnapshotsPanel
                     asset={selectedAssetForSnapshots}
                     selectedAssets={selectedRows.length > 1 ? filteredAssets.filter(a => selectedRows.includes(a.id)) : []}
+                    assetType={activeAssetType}
                     onClose={() => {
                       setSelectedAssetForSnapshots(null);
                       setSelectedRows([]);
                       setHighlightedSnapshotId(null);
                     }}
                     onSnapshotClick={(snapshotId) => {
-                      // Navigate to inspection at specific observation
-                      if (selectedAssetForSnapshots?.latestInspection) {
+                      // Navigate to inspection at specific observation (only for ML/L)
+                      if (activeAssetType !== 'MH' && selectedAssetForSnapshots?.latestInspection) {
                         router.push(`/inspection/${selectedAssetForSnapshots.id}?observation=${snapshotId}`);
                       }
                     }}
@@ -1223,14 +1552,14 @@ export default function AssetListPage() {
       <SearchDialog
         open={searchOpen}
         onClose={() => setSearchOpen(false)}
-        columns={mockColumnDefs}
+        columns={availableColumnsForType}
         onSearch={handleSearch}
       />
 
       <FindReplaceDialog
         open={findReplaceOpen}
         onClose={() => setFindReplaceOpen(false)}
-        columns={mockColumnDefs}
+        columns={availableColumnsForType}
         assets={assets} // All assets for "Project" scope
         filteredAssets={filteredAssets} // Filtered assets for "Entire view" scope
         selectedAssetIds={selectedRows}

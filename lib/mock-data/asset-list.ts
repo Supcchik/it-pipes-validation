@@ -99,10 +99,11 @@ export const mockViews: View[] = [
   }
 ];
 
-// Mock Assets
+// Mock Assets (Mainlines - ML)
 export const mockAssets: Asset[] = [
   {
     id: 'asset-1',
+    asset_type: 'ML',
     pipeSegment: 'ML-001',
     project: 'CityTestQA',
     city: 'Springfield',
@@ -128,6 +129,7 @@ export const mockAssets: Asset[] = [
   },
   {
     id: 'asset-2',
+    asset_type: 'ML',
     pipeSegment: 'ML-002',
     project: 'CityTestQA',
     city: 'Springfield',
@@ -153,6 +155,7 @@ export const mockAssets: Asset[] = [
   },
   {
     id: 'asset-3',
+    asset_type: 'ML',
     pipeSegment: 'ML-003',
     project: 'CityTestQA',
     city: 'Springfield',
@@ -179,6 +182,7 @@ export const mockAssets: Asset[] = [
   // Generate 27 more assets
   ...Array.from({ length: 27 }, (_, i) => ({
     id: `asset-${i + 4}`,
+    asset_type: 'ML' as const,
     pipeSegment: `ML-${String(i + 4).padStart(3, '0')}`,
     project: 'CityTestQA',
     city: 'Springfield',

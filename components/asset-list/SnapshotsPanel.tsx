@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from '@/components/ui/select';
-import type { Asset } from '@/lib/types/asset-list';
+import type { Asset, AssetType } from '@/lib/types/asset-list';
 
 // Snapshot data interface
 export interface SnapshotData {
@@ -31,6 +31,7 @@ interface SnapshotsPanelProps {
   onAssign?: (userId: string) => void;
   onViewInspection?: () => void;
   onClearSelection?: () => void;
+  assetType?: AssetType; // Active asset type (ML, MH, or L)
 }
 
 // Mock snapshots data generator
@@ -75,7 +76,8 @@ export default function SnapshotsPanel({
   highlightedSnapshotId,
   onAssign,
   onViewInspection,
-  onClearSelection
+  onClearSelection,
+  assetType = 'ML' // Default to Mainlines
 }: SnapshotsPanelProps) {
   const [visibleGrades, setVisibleGrades] = useState<number[]>([0, 1, 2, 3, 4, 5]);
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
@@ -104,24 +106,30 @@ export default function SnapshotsPanel({
 
   if (!asset && selectedAssets.length === 0) return null;
 
-  // Generate snapshots for single or multiple selection
+  // Determine if we should show snapshots (ML/L) or details (MH)
+  const showSnapshots = assetType === 'ML' || assetType === 'L';
+  const showDetails = assetType === 'MH';
+
+  // Generate snapshots for single or multiple selection (only for ML/L)
   let allSnapshots: SnapshotData[] = [];
-  if (isMultipleSelection && selectedAssets.length > 0) {
-    // Multi-select: generate snapshots for all selected assets
-    selectedAssets.forEach(selectedAsset => {
-      const assetSnapshots = generateMockSnapshots(selectedAsset);
-      // Add asset info to each snapshot
-      const snapshotsWithAssetInfo = assetSnapshots.map(s => ({
-        ...s,
-        assetId: selectedAsset.id,
-        assetName: selectedAsset.pipeSegment || selectedAsset.id,
-        inspectionDate: selectedAsset.latestInspection?.date || undefined
-      }));
-      allSnapshots = [...allSnapshots, ...snapshotsWithAssetInfo];
-    });
-  } else if (asset) {
-    // Single-select: generate snapshots for one asset
-    allSnapshots = generateMockSnapshots(asset);
+  if (showSnapshots) {
+    if (isMultipleSelection && selectedAssets.length > 0) {
+      // Multi-select: generate snapshots for all selected assets
+      selectedAssets.forEach(selectedAsset => {
+        const assetSnapshots = generateMockSnapshots(selectedAsset);
+        // Add asset info to each snapshot
+        const snapshotsWithAssetInfo = assetSnapshots.map(s => ({
+          ...s,
+          assetId: selectedAsset.id,
+          assetName: selectedAsset.pipeSegment || selectedAsset.lateralId || selectedAsset.id,
+          inspectionDate: selectedAsset.latestInspection?.date || undefined
+        }));
+        allSnapshots = [...allSnapshots, ...snapshotsWithAssetInfo];
+      });
+    } else if (asset) {
+      // Single-select: generate snapshots for one asset
+      allSnapshots = generateMockSnapshots(asset);
+    }
   }
   
   const filteredSnapshots = allSnapshots.filter(s => visibleGrades.includes(s.grade));
@@ -186,7 +194,7 @@ export default function SnapshotsPanel({
         <h3 className="text-base font-semibold text-neutral-900">
           {isMultipleSelection 
             ? `${selectedAssets.length} selected`
-            : (asset?.pipeSegment || asset?.id || 'Selected')}
+            : (asset?.pipeSegment || asset?.lateralId || asset?.manholeId || asset?.id || 'Selected')}
         </h3>
         <Button
           variant="ghost"
@@ -202,102 +210,240 @@ export default function SnapshotsPanel({
       {/* Content Area */}
       <div className="flex-1 overflow-y-auto">
         {(isMultipleSelection || asset) ? (
-          /* Single Selection: Snapshots */
-          <>
-            {/* Visible Grades Filter */}
-            <div className="px-4 py-2.5 bg-neutral-50/50 border-b border-neutral-200">
-              <Label className="text-xs font-medium text-neutral-700 mb-1.5 block">
-                Visible Grades:
-              </Label>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                {[0, 1, 2, 3, 4, 5].map(grade => (
-                  <label
-                    key={grade}
-                    htmlFor={`grade-${grade}`}
-                    className="flex items-center gap-1.5 cursor-pointer group"
-                  >
-                    <Checkbox
-                      id={`grade-${grade}`}
-                      checked={visibleGrades.includes(grade)}
-                      onCheckedChange={() => toggleGrade(grade)}
-                      className="h-3.5 w-3.5"
-                    />
-                    <span className="text-xs text-neutral-700 group-hover:text-neutral-900 flex items-center gap-1.5">
-                      <span className={`w-2.5 h-2.5 rounded-full ${getGradeColor(grade)} shadow-sm`} />
-                      {grade === 0 ? '0-1' : grade.toString()}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Snapshots Grid */}
-            <div className="px-4 py-3 bg-white">
-              {filteredSnapshots.length === 0 ? (
-                <div className="text-center py-6 text-sm text-neutral-500">
-                  No snapshots match the selected grades
-                </div>
-              ) : (
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {filteredSnapshots.map(snapshot => {
-                    const isHighlighted = highlightedSnapshotId === snapshot.id;
-                    return (
-                    <div
-                      key={snapshot.id}
-                      data-snapshot-id={snapshot.id}
-                      className="flex-shrink-0 w-[120px] cursor-pointer group"
-                      onClick={() => onSnapshotClick(snapshot.id)}
+          showSnapshots ? (
+            /* ML/L: Snapshots View */
+            <>
+              {/* Visible Grades Filter */}
+              <div className="px-4 py-2.5 bg-neutral-50/50 border-b border-neutral-200">
+                <Label className="text-xs font-medium text-neutral-700 mb-1.5 block">
+                  Visible Grades:
+                </Label>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {[0, 1, 2, 3, 4, 5].map(grade => (
+                    <label
+                      key={grade}
+                      htmlFor={`grade-${grade}`}
+                      className="flex items-center gap-1.5 cursor-pointer group"
                     >
-                      <div className={`bg-white rounded-lg overflow-hidden border-2 transition-all duration-200 ${
-                        isHighlighted 
-                          ? 'border-orange-500 shadow-lg ring-2 ring-orange-300' 
-                          : 'border-neutral-200 group-hover:border-orange-500 group-hover:shadow-md'
-                      }`}>
-                        {/* Thumbnail */}
-                        <div className="relative w-full h-[120px] bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-                          <ImageIcon className="w-10 h-10 text-neutral-400" />
-                          <div className="absolute top-2 right-2">
-                            <span className={`w-3 h-3 rounded-full ${getGradeColor(snapshot.grade)} block shadow-sm border border-white/50`} />
-                          </div>
-                          {/* Hover overlay */}
-                          <div className="absolute inset-0 bg-orange-500/0 group-hover:bg-orange-500/10 transition-colors" />
-                        </div>
-                        
-                        {/* Info */}
-                        <div className="p-2.5 space-y-1 bg-white">
-                          <div className="text-xs font-semibold text-neutral-900 flex items-center gap-1">
-                            <span>{snapshot.distance}'</span>
-                          </div>
-                          <div className="text-xs font-medium text-neutral-700">
-                            {snapshot.code}
-                          </div>
-                          {snapshot.codeDescription && (
-                            <div className="text-xs text-neutral-500 truncate leading-tight">
-                              {snapshot.codeDescription}
+                      <Checkbox
+                        id={`grade-${grade}`}
+                        checked={visibleGrades.includes(grade)}
+                        onCheckedChange={() => toggleGrade(grade)}
+                        className="h-3.5 w-3.5"
+                      />
+                      <span className="text-xs text-neutral-700 group-hover:text-neutral-900 flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${getGradeColor(grade)} shadow-sm`} />
+                        {grade === 0 ? '0-1' : grade.toString()}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Snapshots Grid */}
+              <div className="px-4 py-3 bg-white">
+                {filteredSnapshots.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-neutral-500">
+                    No snapshots match the selected grades
+                  </div>
+                ) : (
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {filteredSnapshots.map(snapshot => {
+                      const isHighlighted = highlightedSnapshotId === snapshot.id;
+                      return (
+                      <div
+                        key={snapshot.id}
+                        data-snapshot-id={snapshot.id}
+                        className="flex-shrink-0 w-[120px] cursor-pointer group"
+                        onClick={() => onSnapshotClick(snapshot.id)}
+                      >
+                        <div className={`bg-white rounded-lg overflow-hidden border-2 transition-all duration-200 ${
+                          isHighlighted 
+                            ? 'border-orange-500 shadow-lg ring-2 ring-orange-300' 
+                            : 'border-neutral-200 group-hover:border-orange-500 group-hover:shadow-md'
+                        }`}>
+                          {/* Thumbnail */}
+                          <div className="relative w-full h-[120px] bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
+                            <ImageIcon className="w-10 h-10 text-neutral-400" />
+                            <div className="absolute top-2 right-2">
+                              <span className={`w-3 h-3 rounded-full ${getGradeColor(snapshot.grade)} block shadow-sm border border-white/50`} />
                             </div>
-                          )}
-                          {/* Show asset name and inspection info for multi-select */}
-                          {isMultipleSelection && snapshot.assetName && (
-                            <div className="pt-1 border-t border-neutral-100 space-y-0.5">
-                              <div className="text-xs font-medium text-neutral-900 truncate">
-                                {snapshot.assetName}
+                            {/* Hover overlay */}
+                            <div className="absolute inset-0 bg-orange-500/0 group-hover:bg-orange-500/10 transition-colors" />
+                          </div>
+                          
+                          {/* Info */}
+                          <div className="p-2.5 space-y-1 bg-white">
+                            <div className="text-xs font-semibold text-neutral-900 flex items-center gap-1">
+                              <span>{snapshot.distance}'</span>
+                            </div>
+                            <div className="text-xs font-medium text-neutral-700">
+                              {snapshot.code}
+                            </div>
+                            {snapshot.codeDescription && (
+                              <div className="text-xs text-neutral-500 truncate leading-tight">
+                                {snapshot.codeDescription}
                               </div>
-                              {snapshot.inspectionDate && (
-                                <div className="text-xs text-neutral-500">
-                                  Insp: {snapshot.inspectionDate}
+                            )}
+                            {/* Show asset name and inspection info for multi-select */}
+                            {isMultipleSelection && snapshot.assetName && (
+                              <div className="pt-1 border-t border-neutral-100 space-y-0.5">
+                                <div className="text-xs font-medium text-neutral-900 truncate">
+                                  {snapshot.assetName}
                                 </div>
-                              )}
+                                {snapshot.inspectionDate && (
+                                  <div className="text-xs text-neutral-500">
+                                    Insp: {snapshot.inspectionDate}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                    })}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : showDetails ? (
+            /* MH: Structural Details View */
+            <div className="px-4 py-4 bg-white">
+              {isMultipleSelection ? (
+                /* Multi-select: Show details for all selected manholes */
+                <div className="space-y-4">
+                  {selectedAssets.map(selectedAsset => (
+                    <div key={selectedAsset.id} className="border border-neutral-200 rounded-lg p-4 bg-neutral-50">
+                      <h4 className="text-sm font-semibold text-neutral-900 mb-3">
+                        {selectedAsset.manholeId || selectedAsset.id}
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs text-neutral-500">Depth</Label>
+                          <div className="text-sm font-medium text-neutral-900">
+                            {selectedAsset.depth ? `${selectedAsset.depth} ft` : 'N/A'}
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-neutral-500">Cover Type</Label>
+                          <div className="text-sm font-medium text-neutral-900">
+                            {selectedAsset.coverType || 'N/A'}
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-neutral-500">Frame Type</Label>
+                          <div className="text-sm font-medium text-neutral-900">
+                            {selectedAsset.frameType || 'N/A'}
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-neutral-500">Condition</Label>
+                          <div className="text-sm font-medium text-neutral-900">
+                            {selectedAsset.condition || 'N/A'}
+                          </div>
+                        </div>
+                        {selectedAsset.latestInspection && (
+                          <>
+                            <div>
+                              <Label className="text-xs text-neutral-500">Inspection Date</Label>
+                              <div className="text-sm font-medium text-neutral-900">
+                                {selectedAsset.latestInspection.date}
+                              </div>
                             </div>
-                          )}
+                            <div>
+                              <Label className="text-xs text-neutral-500">Certificate</Label>
+                              <div className="text-sm font-medium text-neutral-900">
+                                {selectedAsset.latestInspection.certificateNumber}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : asset ? (
+                /* Single-select: Show details for one manhole */
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-neutral-500">Depth</Label>
+                      <div className="text-sm font-medium text-neutral-900 mt-1">
+                        {asset.depth ? `${asset.depth} ft` : 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-neutral-500">Cover Type</Label>
+                      <div className="text-sm font-medium text-neutral-900 mt-1">
+                        {asset.coverType || 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-neutral-500">Frame Type</Label>
+                      <div className="text-sm font-medium text-neutral-900 mt-1">
+                        {asset.frameType || 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-neutral-500">Condition</Label>
+                      <div className="text-sm font-medium text-neutral-900 mt-1">
+                        {asset.condition || 'N/A'}
+                      </div>
+                    </div>
+                    {asset.street && (
+                      <div>
+                        <Label className="text-xs text-neutral-500">Street</Label>
+                        <div className="text-sm font-medium text-neutral-900 mt-1">
+                          {asset.street}
+                        </div>
+                      </div>
+                    )}
+                    {asset.city && (
+                      <div>
+                        <Label className="text-xs text-neutral-500">City</Label>
+                        <div className="text-sm font-medium text-neutral-900 mt-1">
+                          {asset.city}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {asset.latestInspection && (
+                    <div className="pt-4 border-t border-neutral-200">
+                      <h4 className="text-sm font-semibold text-neutral-900 mb-3">Latest Inspection</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-xs text-neutral-500">Date</Label>
+                          <div className="text-sm font-medium text-neutral-900 mt-1">
+                            {asset.latestInspection.date}
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-neutral-500">Certificate Number</Label>
+                          <div className="text-sm font-medium text-neutral-900 mt-1">
+                            {asset.latestInspection.certificateNumber}
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-neutral-500">Purpose</Label>
+                          <div className="text-sm font-medium text-neutral-900 mt-1">
+                            {asset.latestInspection.purpose}
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-neutral-500">Surveyed By</Label>
+                          <div className="text-sm font-medium text-neutral-900 mt-1">
+                            {asset.latestInspection.surveyedBy}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  );
-                  })}
+                  )}
                 </div>
-              )}
+              ) : null}
             </div>
-          </>
+          ) : null
         ) : null}
       </div>
 

@@ -3,29 +3,58 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, X, Settings2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import type { Asset } from '@/lib/types/asset-list';
+import type { Asset, AssetType } from '@/lib/types/asset-list';
 
 interface SearchBarProps {
   assets: Asset[];
   onFilteredResults: (assets: Asset[] | null) => void; // null = no search, [] = no results, [assets] = results
   onOpenAdvancedSearch: () => void;
+  assetType?: AssetType; // Active asset type
 }
 
-// Fields to search in asset object
-const ASSET_FIELDS = [
-  'pipeSegment', 
-  'street', 
-  'upstreamMH', 
-  'downstreamMH', 
-  'material'
-];
+// Fields to search in asset object by type
+const getAssetFields = (assetType: AssetType): string[] => {
+  switch (assetType) {
+    case 'ML':
+      return ['pipeSegment', 'street', 'upstreamMH', 'downstreamMH', 'material'];
+    case 'MH':
+      return ['manholeId', 'street', 'depth', 'coverType', 'frameType', 'condition'];
+    case 'L':
+      return ['lateralId', 'street', 'propertyAddress', 'material', 'connectionPoint', 'serviceType'];
+    default:
+      return ['street'];
+  }
+};
+
+// Placeholder text by type
+const getPlaceholder = (assetType: AssetType): string => {
+  switch (assetType) {
+    case 'ML':
+      return 'Search pipe, street, material...';
+    case 'MH':
+      return 'Search manhole, street, depth...';
+    case 'L':
+      return 'Search lateral, property, street...';
+    default:
+      return 'Search...';
+  }
+};
 
 export default function SearchBar({ 
   assets, 
   onFilteredResults, 
-  onOpenAdvancedSearch 
+  onOpenAdvancedSearch,
+  assetType = 'ML'
 }: SearchBarProps) {
   const [query, setQuery] = useState('');
+
+  // Clear query when asset type changes
+  useEffect(() => {
+    setQuery('');
+  }, [assetType]);
+
+  // Get fields to search based on asset type
+  const searchFields = useMemo(() => getAssetFields(assetType), [assetType]);
 
   // Live filtering
   const filtered = useMemo(() => {
@@ -33,15 +62,15 @@ export default function SearchBar({
     
     const q = query.toLowerCase();
     return assets.filter(asset => {
-      // Search in asset fields
-      if (ASSET_FIELDS.some(field => {
+      // Search in asset fields (type-specific)
+      if (searchFields.some(field => {
         const value = (asset as unknown as Record<string, unknown>)[field];
         return String(value || '').toLowerCase().includes(q);
       })) {
         return true;
       }
       
-      // Search in latestInspection fields
+      // Search in latestInspection fields (common for all types)
       if (asset.latestInspection) {
         // certificateNumber
         if (asset.latestInspection.certificateNumber?.toLowerCase().includes(q)) {
@@ -55,7 +84,7 @@ export default function SearchBar({
       
       return false;
     });
-  }, [query, assets]);
+  }, [query, assets, searchFields]);
 
   // Update parent with filtered results
   useEffect(() => {
@@ -77,7 +106,7 @@ export default function SearchBar({
       {/* Input */}
       <Input
         type="text"
-        placeholder="Search pipe, street, material..."
+        placeholder={getPlaceholder(assetType)}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         className="pl-10 pr-20 h-9"

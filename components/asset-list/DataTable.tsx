@@ -234,15 +234,36 @@ export default function DataTable({
   const getCellValue = (asset: Asset, column: ColumnDef): string | number | boolean => {
     if (column.table === 'asset') {
       const value = (asset as unknown as Record<string, unknown>)[column.field];
-      if (value === null || value === undefined) return '';
+      if (value === null || value === undefined) {
+        // Handle empty values - show empty string or appropriate fallback
+        return '';
+      }
+      // Format specific fields for display
+      if (column.field === 'depth' && typeof value === 'number') {
+        // Format depth as "X ft Y in" or "X ft"
+        const feet = Math.floor(value);
+        const inches = Math.round((value - feet) * 12);
+        if (inches > 0) {
+          return `${feet} ft ${inches} in` as unknown as string | number | boolean;
+        }
+        return `${feet} ft` as unknown as string | number | boolean;
+      }
+      if (column.field === 'width' && typeof value === 'number') {
+        // Format width as "X in"
+        return `${value} in` as unknown as string | number | boolean;
+      }
+      if (column.field === 'length' && typeof value === 'number') {
+        // Format length as "X ft"
+        return `${value} ft` as unknown as string | number | boolean;
+      }
       return value as string | number | boolean;
     } else if (column.table === 'inspection' && asset.latestInspection) {
       const value = (asset.latestInspection as unknown as Record<string, unknown>)[column.field];
       if (value === null || value === undefined) return '';
       return value as string | number | boolean;
     } else if (column.table === 'observation') {
-      if (column.field === 'observationCount') return asset.observationCount;
-      if (column.field === 'hasDefects') return asset.hasDefects;
+      if (column.field === 'observationCount') return asset.observationCount ?? 0;
+      if (column.field === 'hasDefects') return asset.hasDefects ?? false;
       if (column.field === 'maxGrade') return asset.maxGrade ?? '';
     }
     return '';
@@ -276,6 +297,20 @@ export default function DataTable({
     }
     if (field === 'hasDefects') {
       return ['Yes', 'No'];
+    }
+    // Manhole specific fields
+    if (field === 'coverType') {
+      return ['Solid', 'Vented', 'Keyed'];
+    }
+    if (field === 'frameType') {
+      return ['Standard', 'Heavy Duty', 'Custom'];
+    }
+    if (field === 'condition') {
+      return ['Excellent', 'Good', 'Fair', 'Poor', 'Failed'];
+    }
+    // Lateral specific fields
+    if (field === 'serviceType') {
+      return ['Residential', 'Commercial', 'Industrial'];
     }
     return [];
   };

@@ -28,8 +28,9 @@ import {
   Columns,
   MoveRight
 } from 'lucide-react';
-import type { FilterConfig, Asset } from '@/lib/types/asset-list';
+import type { FilterConfig, Asset, AssetType } from '@/lib/types/asset-list';
 import SearchBar from './SearchBar';
+import AssetTypeSelector from './AssetTypeSelector';
 
 interface ToolbarProps {
   assets: Asset[]; // НОВИЙ: для SearchBar
@@ -49,6 +50,15 @@ interface ToolbarProps {
   filters?: FilterConfig[];
   visibleColumnsCount?: number; // НОВИЙ: Кількість видимих колонок
   onRemoveFilter?: (filterId: string) => void;
+  // Asset Type Selector props
+  activeAssetType?: AssetType;
+  assetCounts?: {
+    ML: number;
+    MH: number;
+    L: number;
+  };
+  onAssetTypeChange?: (type: AssetType) => void;
+  assetTypeLoading?: boolean;
 }
 
 export default function Toolbar({
@@ -67,7 +77,11 @@ export default function Toolbar({
   onMoveToProject,
   onCopyToProject,
   filters = [],
-  visibleColumnsCount
+  visibleColumnsCount,
+  activeAssetType = 'ML',
+  assetCounts = { ML: 0, MH: 0, L: 0 },
+  onAssetTypeChange,
+  assetTypeLoading = false
 }: ToolbarProps) {
   const activeFiltersCount = filters.length;
   return (
@@ -75,12 +89,26 @@ export default function Toolbar({
       <div className="min-h-14 bg-white border-b border-neutral-200 flex flex-col">
         {/* Top Row: Primary Actions */}
         <div className="h-14 flex items-center justify-between px-4 gap-2">
-          {/* Group 1: Search Bar */}
+          {/* Group 1: Asset Type Selector + Search Bar */}
           <div className="flex items-center gap-2">
+            {/* Asset Type Selector */}
+            {onAssetTypeChange && (
+              <>
+                <AssetTypeSelector
+                  activeType={activeAssetType}
+                  counts={assetCounts}
+                  onTypeChange={onAssetTypeChange}
+                  loading={assetTypeLoading}
+                />
+                {/* Visual Separator */}
+                <div className="h-6 w-px bg-neutral-300 mx-1" />
+              </>
+            )}
             <SearchBar
               assets={assets}
               onFilteredResults={onFilteredResults}
               onOpenAdvancedSearch={onOpenAdvancedSearch}
+              assetType={activeAssetType}
             />
           </div>
 
