@@ -24,7 +24,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MoreVertical, Eye, Edit, Copy, Trash2, ArrowUpDown, GripVertical, Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Asset, ColumnDef } from '@/lib/types/asset-list';
+import type { Asset, ColumnDef, AssetType } from '@/lib/types/asset-list';
+import { isFilterApplicable } from '@/lib/utils/asset-type-utils';
 import { ActionsColumnHeader, ActionsColumnCell } from './ActionsColumn';
 import {
   DndContext,
@@ -230,8 +231,29 @@ export default function DataTable({
     }
   };
 
+  // Check if column field is applicable to asset type
+  const isFieldApplicable = (asset: Asset, column: ColumnDef): boolean => {
+    // For asset_type column, always applicable
+    if (column.field === 'asset_type') return true;
+    
+    // Check if field is applicable to this asset type
+    const filterConfig = {
+      id: column.id,
+      field: column.field,
+      operator: 'equals' as const,
+      value: '',
+      table: column.table
+    };
+    return isFilterApplicable(filterConfig, asset.asset_type);
+  };
+
   // Get cell value based on column field
-  const getCellValue = (asset: Asset, column: ColumnDef): string | number | boolean => {
+  const getCellValue = (asset: Asset, column: ColumnDef): string | number | boolean | null => {
+    // If field is not applicable to asset type, return null (will show as "-")
+    if (!isFieldApplicable(asset, column)) {
+      return null;
+    }
+    
     if (column.table === 'asset') {
       const value = (asset as unknown as Record<string, unknown>)[column.field];
       if (value === null || value === undefined) {
@@ -711,8 +733,12 @@ export default function DataTable({
 
                 {/* Data cells */}
                 {columns.map((column) => {
-                  // All fields are editable except id
-                  const isEditable = column.field !== 'id';
+                  // All fields are editable except:
+                  // - id (never editable)
+                  // - asset_type (read-only in combined view)
+                  // - fields not applicable to this asset type (will show "-")
+                  const isFieldApplicableToAsset = isFieldApplicable(asset, column);
+                  const isEditable = column.field !== 'id' && column.field !== 'asset_type' && isFieldApplicableToAsset;
 
                   const isEditingThisField = editingRowId === asset.id && 
                                             (editingField === null || editingField === column.field);
@@ -921,13 +947,44 @@ export default function DataTable({
                         <span
                           className={cn(
                             "inline-block",
-                            isEditable && !isEditingThisField && "cursor-pointer hover:bg-blue-50 hover:underline px-1 py-0.5 rounded transition-colors"
+                            isEditable && !isEditingThisField && column.field !== 'asset_type' && "cursor-pointer hover:bg-blue-50 hover:underline px-1 py-0.5 rounded transition-colors"
                           )}
-                          onClick={isEditable && !isEditingThisField ? handleFieldClick : undefined}
-                          title={isEditable && !isEditingThisField ? "Click to edit" : undefined}
+                          onClick={isEditable && !isEditingThisField && column.field !== 'asset_type' ? handleFieldClick : undefined}
+                          title={isEditable && !isEditingThisField && column.field !== 'asset_type' ? "Click to edit" : undefined}
                         >
                           {(() => {
+                            // Special handling for asset_type column (combined view)
+                            if (column.field === 'asset_type') {
+                              const type = asset.asset_type;
+                              const typeColors = {
+                                'ML': 'bg-blue-100 text-blue-700',
+                                'MH': 'bg-red-100 text-red-700',
+                                'L': 'bg-green-100 text-green-700'
+                              };
+                              const typeLabels = {
+                                'ML': 'ML',
+                                'MH': 'MH',
+                                'L': 'L'
+                              };
+                              return (
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
+                                  typeColors[type] || 'bg-neutral-100 text-neutral-700'
+                                )}>
+                                  {typeLabels[type] || type}
+                                </span>
+                              );
+                            }
+                            
                             const value = getCellValue(asset, column);
+                            
+                            // Show "-" for fields not applicable to this asset type
+                            if (value === null) {
+                              return (
+                                <span className="text-neutral-400 italic">—</span>
+                              );
+                            }
+                            
                             if (typeof value === 'boolean') {
                               return value ? 'Yes' : 'No';
                             }

@@ -33,10 +33,10 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
 import { mockAssetCounts, getAssetsByType } from '@/lib/mock-data/asset-types';
 import type { View, Asset, ColumnDef, FilterConfig, AssetType } from '@/lib/types/asset-list';
-import { normalizeFilters, applyFilters } from '@/lib/utils/filter-utils';
+import { normalizeFilters, applyFilters, assetMatchesFilter } from '@/lib/utils/filter-utils';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
-import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl } from '@/lib/utils/asset-type-utils';
-import { getColumnsByType } from '@/lib/utils/column-schemas';
+import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl, formatActiveTypes, areAllTypesSelected } from '@/lib/utils/asset-type-utils';
+import { getColumnsByType, getAllColumnsForTypes } from '@/lib/utils/column-schemas';
 
 export default function AssetListPage() {
   const router = useRouter();
@@ -55,15 +55,21 @@ export default function AssetListPage() {
     return mockViews.length > 0 ? mockViews[0].id : 'default';
   });
   
-  // Asset Type Management - read from URL on mount
-  const [activeAssetType, setActiveAssetType] = useState<AssetType>(() => {
-    // Read from URL on initial mount
-    if (typeof window !== 'undefined') {
-      const typeParam = searchParams.get('type');
-      return normalizeAssetTypeFromUrl(typeParam);
+  // Asset Type Management - parse types from URL (works on both server and client)
+  const urlTypes = useMemo((): AssetType[] => {
+    const typeParam = searchParams.get('type');
+    if (typeParam) {
+      // Support comma-separated types: "ml,mh" or "all"
+      if (typeParam.toLowerCase() === 'all') {
+        return ['ML', 'MH', 'L'];
+      }
+      const types = typeParam.split(',').map(t => normalizeAssetTypeFromUrl(t.trim())).filter(Boolean) as AssetType[];
+      return types.length > 0 ? types : ['ML'];
     }
-    return 'ML'; // SSR fallback
-  });
+    return ['ML']; // Default - single type
+  }, [searchParams]);
+  
+  const [activeAssetTypes, setActiveAssetTypes] = useState<AssetType[]>(urlTypes);
   const [assetTypeLoading, setAssetTypeLoading] = useState(false);
   
   // Per-type state preservation
@@ -181,27 +187,41 @@ export default function AssetListPage() {
     return views[0];
   }, [views, activeViewId]);
 
-  // Load assets when asset type changes
+  // Load assets when asset types change
   useEffect(() => {
     setAssetTypeLoading(true);
     
     // Simulate API call delay (200-300ms)
     const timer = setTimeout(() => {
-      const typeAssets = getAssetsByType(activeAssetType, mockAssets);
-      setAssets(typeAssets);
+      // Combine assets from all selected types
+      const allTypeAssets: Asset[] = [];
+      activeAssetTypes.forEach(type => {
+        const typeAssets = getAssetsByType(type, mockAssets);
+        allTypeAssets.push(...typeAssets);
+      });
+      setAssets(allTypeAssets);
       setAssetTypeLoading(false);
     }, 250);
     
     return () => clearTimeout(timer);
-  }, [activeAssetType]);
+  }, [activeAssetTypes]);
 
-  // Handle asset type change
-  const handleAssetTypeChange = (newType: AssetType) => {
-    if (newType === activeAssetType) return;
+  // Handle asset types change (now supports multiple types)
+  const handleAssetTypesChange = (newTypes: AssetType[]) => {
+    // Check if types actually changed
+    const typesChanged = 
+      newTypes.length !== activeAssetTypes.length ||
+      !newTypes.every(type => activeAssetTypes.includes(type));
+    
+    if (!typesChanged) return;
+    
+    // For multiple types, we use universal columns (common to all types)
+    // For single type, we use type-specific columns
+    const isCombinedView = newTypes.length > 1;
     
     if (!activeView) {
-      // If no view, just switch type
-      setActiveAssetType(newType);
+      // If no view, just switch types
+      setActiveAssetTypes(newTypes);
       setSelectedRows([]);
       setSelectedAssetForSnapshots(null);
       setHighlightedSnapshotId(null);
@@ -226,145 +246,110 @@ export default function AssetListPage() {
       allFilters.push(...activeView.filters);
     }
     
-    // Also include temporary filters
-    const allFiltersIncludingTemp = [...allFilters, ...temporaryFilters];
-    
-    // Find inapplicable filters for new type
-    const inapplicableFilters = getInapplicableFilters(allFiltersIncludingTemp, newType);
-    
-    // Save current type state (before removing filters)
-    setTypeStates(prev => ({
-      ...prev,
-      [activeAssetType]: {
-        filters: allFilters,
-        sort: activeView.sortBy ? { field: activeView.sortBy, direction: activeView.sortDirection || 'asc' } : null,
-        columns: activeView.displayedColumns || []
-      }
-    }));
-    
-    // Remove inapplicable filters from view
-    if (inapplicableFilters.length > 0 && activeView) {
-      // Remove from simple filters
-      if (activeView.simpleFilters) {
-        const updatedSimpleFilters = {
-          ...activeView.simpleFilters,
-          conditions: activeView.simpleFilters.conditions.filter(
-            f => !inapplicableFilters.some(inf => inf.id === f.id)
-          )
-        };
+    // For combined view, filter out type-specific filters
+    // For single type, keep existing filter logic
+    if (isCombinedView) {
+      // Remove filters that are not applicable to ALL selected types
+      const applicableFilters = allFilters.filter(filter => {
+        return newTypes.every(type => {
+          const inapplicable = getInapplicableFilters([filter], type);
+          return inapplicable.length === 0;
+        });
+      });
+      
+      if (applicableFilters.length !== allFilters.length && activeView) {
+        // Update view with only universal filters
         const updatedView: View = {
           ...activeView,
-          simpleFilters: updatedSimpleFilters,
-          filters: updatedSimpleFilters.conditions, // Sync with legacy filters
+          simpleFilters: applicableFilters.length > 0 ? {
+            type: 'simple',
+            conditions: applicableFilters
+          } : undefined,
+          filters: applicableFilters,
           updatedAt: new Date().toISOString().split('T')[0]
         };
         setViews(views.map(v => v.id === activeView.id ? updatedView : v));
-      }
-      // Remove from group filters
-      else if (activeView.groupFilters) {
-        const updatedGroups = activeView.groupFilters.groups.map(group => ({
-          ...group,
-          conditions: group.conditions.filter(
-            f => !inapplicableFilters.some(inf => inf.id === f.id)
-          )
-        })).filter(group => group.conditions.length > 0);
         
-        const updatedView: View = {
-          ...activeView,
-          groupFilters: updatedGroups.length > 0 
-            ? { type: 'groups', groups: updatedGroups }
-            : null,
-          updatedAt: new Date().toISOString().split('T')[0]
-        };
-        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+        const removedCount = allFilters.length - applicableFilters.length;
+        if (removedCount > 0) {
+          toast.info(`${removedCount} filter${removedCount > 1 ? 's' : ''} removed`, {
+            description: `Not applicable to combined view. Only universal filters are shown.`,
+            duration: 4000
+          });
+        }
       }
-      // Remove from advanced filters
-      else if (activeView.advancedFilters) {
-        const updatedGroups = activeView.advancedFilters.groups.map(group => ({
-          ...group,
-          conditions: group.conditions.filter(
-            f => !inapplicableFilters.some(inf => inf.id === f.id)
-          )
-        })).filter(group => group.conditions.length > 0);
-        
-        const updatedView: View = {
-          ...activeView,
-          advancedFilters: updatedGroups.length > 0
-            ? { type: 'advanced', groups: updatedGroups }
-            : null,
-          updatedAt: new Date().toISOString().split('T')[0]
-        };
-        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
-      }
-      // Remove from legacy filters
-      else if (activeView.filters) {
-        const updatedFilters = activeView.filters.filter(
+    } else {
+      // Single type - use existing logic
+      const singleType = newTypes[0];
+      const allFiltersIncludingTemp = [...allFilters, ...temporaryFilters];
+      const inapplicableFilters = getInapplicableFilters(allFiltersIncludingTemp, singleType);
+      
+      if (inapplicableFilters.length > 0 && activeView) {
+        // Remove inapplicable filters
+        const updatedFilters = allFilters.filter(
           f => !inapplicableFilters.some(inf => inf.id === f.id)
         );
+        
         const updatedView: View = {
           ...activeView,
+          simpleFilters: updatedFilters.length > 0 ? {
+            type: 'simple',
+            conditions: updatedFilters
+          } : undefined,
           filters: updatedFilters,
           updatedAt: new Date().toISOString().split('T')[0]
         };
         setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+        
+        const updatedTempFilters = temporaryFilters.filter(
+          f => !inapplicableFilters.some(inf => inf.id === f.id)
+        );
+        setTemporaryFilters(updatedTempFilters);
+        
+        toast.info(`${inapplicableFilters.length} filter${inapplicableFilters.length > 1 ? 's' : ''} removed`, {
+          description: `Not applicable to ${getAssetTypeLabel(singleType)}.`,
+          duration: 4000
+        });
       }
-      
-      // Remove from temporary filters
-      const updatedTempFilters = temporaryFilters.filter(
-        f => !inapplicableFilters.some(inf => inf.id === f.id)
-      );
-      setTemporaryFilters(updatedTempFilters);
-      
-      // Show toast notification
-      const newTypeColumns = getColumnsByType(newType);
-      const filterNames = inapplicableFilters.map(f => {
-        // Try to get a readable name for the filter
-        const column = newTypeColumns.find(col => col.field === f.field);
-        return column?.label || f.field;
-      }).join(', ');
-      
-      toast.info(`${inapplicableFilters.length} filter${inapplicableFilters.length > 1 ? 's' : ''} removed`, {
-        description: `Not applicable to ${getAssetTypeLabel(newType)}. ${filterNames ? `Removed: ${filterNames}` : ''}`,
-        duration: 4000
-      });
     }
     
-    // Restore state for new type (if any was saved)
-    const savedState = typeStates[newType];
-    if (savedState && activeView) {
-      // Restore filters, sort, and columns
-      const updatedView: View = {
-        ...activeView,
-        simpleFilters: savedState.filters.length > 0 ? {
-          type: 'simple',
-          conditions: savedState.filters
-        } : undefined,
-        filters: savedState.filters, // Sync with legacy
-        sortBy: savedState.sort?.field,
-        sortDirection: savedState.sort?.direction,
-        displayedColumns: savedState.columns.length > 0 
-          ? savedState.columns 
-          : getColumnsByType(newType).slice(0, 8).map(col => col.id), // Default if no saved columns
-        columnOrder: savedState.columns.length > 0 
-          ? savedState.columns 
-          : getColumnsByType(newType).slice(0, 8).map(col => col.id),
-        updatedAt: new Date().toISOString().split('T')[0]
-      };
-      setViews(views.map(v => v.id === activeView.id ? updatedView : v));
-    } else if (activeView) {
-      // No saved state - reset to defaults for new type
-      const defaultColumns = getColumnsByType(newType).slice(0, 8).map(col => col.id);
-      const updatedView: View = {
-        ...activeView,
-        simpleFilters: undefined,
-        filters: [],
-        sortBy: undefined,
-        sortDirection: undefined,
-        displayedColumns: defaultColumns,
-        columnOrder: defaultColumns,
-        updatedAt: new Date().toISOString().split('T')[0]
-      };
-      setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+    // Update columns based on view mode
+    if (activeView) {
+      if (isCombinedView) {
+        // Combined view: keep existing columns, but ensure they exist in combined column set
+        // If view has no columns or columns don't match, use default from first type
+        const allAvailableColumns = getAllColumnsForTypes(newTypes);
+        const availableColumnIds = allAvailableColumns.map(col => col.id);
+        
+        // Keep existing columns that are still available, otherwise use defaults
+        const existingValidColumns = activeView.displayedColumns?.filter(colId => 
+          availableColumnIds.includes(colId)
+        ) || [];
+        
+        const defaultColumns = availableColumnIds.slice(0, 12); // Show more columns in combined view
+        const columnsToUse = existingValidColumns.length > 0 ? existingValidColumns : defaultColumns;
+        
+        const updatedView: View = {
+          ...activeView,
+          displayedColumns: columnsToUse,
+          columnOrder: activeView.columnOrder?.filter(colId => availableColumnIds.includes(colId)).length > 0
+            ? activeView.columnOrder.filter(colId => availableColumnIds.includes(colId))
+            : columnsToUse,
+          updatedAt: new Date().toISOString().split('T')[0]
+        };
+        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+      } else {
+        // Single type: use type-specific columns
+        const singleType = newTypes[0];
+        const defaultColumns = getColumnsByType(singleType).slice(0, 8).map(col => col.id);
+        const updatedView: View = {
+          ...activeView,
+          displayedColumns: defaultColumns,
+          columnOrder: defaultColumns,
+          updatedAt: new Date().toISOString().split('T')[0]
+        };
+        setViews(views.map(v => v.id === activeView.id ? updatedView : v));
+      }
     }
     
     // Clear selection
@@ -379,43 +364,38 @@ export default function AssetListPage() {
     // Reset to first page
     setCurrentPage(1);
     
-    // Update active type
-    setActiveAssetType(newType);
+    // Update active types
+    setActiveAssetTypes(newTypes);
     
-    // Update URL with new type (preserve other query params)
+    // Update URL with new types (preserve other query params)
     const currentParams = new URLSearchParams(searchParams.toString());
-    currentParams.set('type', assetTypeToUrl(newType));
+    if (areAllTypesSelected(newTypes)) {
+      currentParams.set('type', 'all');
+    } else {
+      currentParams.set('type', newTypes.map(t => assetTypeToUrl(t)).join(','));
+    }
     router.push(`?${currentParams.toString()}`, { scroll: false });
   };
   
-  // Sync URL with asset type changes (browser back/forward navigation)
+  // Sync state with URL types when URL changes (browser back/forward navigation)
   useEffect(() => {
-    const urlType = searchParams.get('type');
-    const normalizedUrlType = normalizeAssetTypeFromUrl(urlType);
+    // Check if URL types differ from current state (avoid loops)
+    const typesChanged = 
+      urlTypes.length !== activeAssetTypes.length ||
+      !urlTypes.every(type => activeAssetTypes.includes(type));
     
-    // Check if URL has invalid type (fallback to ML)
-    if (urlType && normalizedUrlType === 'ML' && urlType.toLowerCase() !== 'ml') {
-      // Invalid type in URL - show notification and update URL
-      toast.warning('Invalid asset type in URL', {
-        description: `Type "${urlType}" is not valid. Defaulting to Mainlines.`,
-        duration: 3000
-      });
-      const currentParams = new URLSearchParams(searchParams.toString());
-      currentParams.set('type', 'ml');
-      router.replace(`?${currentParams.toString()}`, { scroll: false });
-      return;
-    }
-    
-    // Only update if URL type differs from current state (avoid loops)
-    if (normalizedUrlType !== activeAssetType) {
+    if (typesChanged) {
       // URL changed (e.g., browser back button) - update state
-      // But don't call handleAssetTypeChange to avoid triggering URL update again
-      setActiveAssetType(normalizedUrlType);
-      // Also trigger asset loading for new type
+      setActiveAssetTypes(urlTypes);
+      // Also trigger asset loading for new types
       setAssetTypeLoading(true);
       setTimeout(() => {
-        const typeAssets = getAssetsByType(normalizedUrlType, mockAssets);
-        setAssets(typeAssets);
+        const allTypeAssets: Asset[] = [];
+        urlTypes.forEach(type => {
+          const typeAssets = getAssetsByType(type, mockAssets);
+          allTypeAssets.push(...typeAssets);
+        });
+        setAssets(allTypeAssets);
         setAssetTypeLoading(false);
       }, 250);
       setSelectedRows([]);
@@ -425,12 +405,12 @@ export default function AssetListPage() {
       setSearchQuery(null);
       setCurrentPage(1);
     }
-  }, [searchParams, activeAssetType, router]); // React to URL changes (browser back/forward)
+  }, [urlTypes, activeAssetTypes]); // React to URL changes (browser back/forward)
 
   // Filter assets based on simple search, active view filters (normalized) and advanced search query
   const filteredAssets = useMemo(() => {
-    // Filter by asset type first
-    const typeFiltered = assets.filter(asset => asset.asset_type === activeAssetType);
+    // Filter by asset types (support multiple types)
+    const typeFiltered = assets.filter(asset => activeAssetTypes.includes(asset.asset_type));
     
     // Start with simple search results (or all assets if no simple search active)
     // simpleSearchResults === null means no search active, use all assets
@@ -438,11 +418,11 @@ export default function AssetListPage() {
     // simpleSearchResults === [assets] means search active with results
     let filtered: Asset[];
     if (simpleSearchResults === null) {
-      // No search active, use all assets of current type
+      // No search active, use all assets of current types
       filtered = [...typeFiltered];
     } else {
-      // Search active - use results filtered by type (even if empty array)
-      filtered = simpleSearchResults.filter(asset => asset.asset_type === activeAssetType);
+      // Search active - use results filtered by types (even if empty array)
+      filtered = simpleSearchResults.filter(asset => activeAssetTypes.includes(asset.asset_type));
     }
     
     if (!filtered || filtered.length === 0) {
@@ -459,7 +439,7 @@ export default function AssetListPage() {
     // Apply temporary filters (on top of view filters)
     if (temporaryFilters.length > 0) {
       temporaryFilters.forEach(filter => {
-        filtered = filtered.filter(asset => applyFilter(asset, filter));
+        filtered = filtered.filter(asset => assetMatchesFilter(asset, filter));
       });
     }
 
@@ -533,18 +513,38 @@ export default function AssetListPage() {
     }
 
     return filtered;
-  }, [simpleSearchResults, activeView, searchQuery, assets, activeAssetType, temporaryFilters]);
+  }, [simpleSearchResults, activeView, searchQuery, assets, activeAssetTypes, temporaryFilters]);
 
-  // Get columns for active asset type
+  // Get columns for active asset types (combined view includes ALL columns from all types)
   const availableColumnsForType = useMemo(() => {
-    return getColumnsByType(activeAssetType);
-  }, [activeAssetType]);
+    if (activeAssetTypes.length > 1) {
+      // Combined view: return ALL columns from all selected types (merged, no duplicates)
+      return getAllColumnsForTypes(activeAssetTypes);
+    } else {
+      // Single type: return type-specific columns
+      return getColumnsByType(activeAssetTypes[0]);
+    }
+  }, [activeAssetTypes]);
 
   // Get columns for active view in correct order, filtered by asset type
   const displayedColumns = useMemo(() => {
+    const isCombinedView = activeAssetTypes.length > 1;
+    
+    // Type column for combined view (always first)
+    const typeColumn: ColumnDef = {
+      id: 'asset_type',
+      label: 'Type',
+      field: 'asset_type',
+      table: 'asset',
+      type: 'text',
+      sortable: true,
+      filterable: false
+    };
+    
     if (!activeView) {
       // If no view, return default columns for current asset type
-      return availableColumnsForType.slice(0, 8); // Default: first 8 columns
+      const defaultCols = availableColumnsForType.slice(0, 8);
+      return isCombinedView ? [typeColumn, ...defaultCols] : defaultCols;
     }
     
     try {
@@ -556,7 +556,7 @@ export default function AssetListPage() {
       
       // Filter saved columns to only include those available for current type
       const validSavedColumns = savedColumns.filter(colId => 
-        typeColumns.some(col => col.id === colId)
+        colId !== 'asset_type' && typeColumns.some(col => col.id === colId)
       );
       
       // If no valid saved columns, use default columns for type
@@ -566,13 +566,16 @@ export default function AssetListPage() {
       
       // Use columnOrder if available, otherwise use displayedColumns order
       const order = activeView.columnOrder && activeView.columnOrder.length > 0
-        ? activeView.columnOrder.filter(colId => typeColumns.some(col => col.id === colId))
+        ? activeView.columnOrder.filter(colId => colId !== 'asset_type' && typeColumns.some(col => col.id === colId))
         : columnsToShow;
       
       // Map to ColumnDef objects in the correct order
-      return order
+      const mappedColumns = order
         .map(colId => typeColumns.find(col => col.id === colId))
         .filter((col): col is ColumnDef => col !== undefined);
+      
+      // Add type column at the beginning for combined view
+      return isCombinedView ? [typeColumn, ...mappedColumns] : mappedColumns;
     } catch (error) {
       console.error('Error filtering columns:', error);
       // Fallback to default columns for type
@@ -1256,9 +1259,9 @@ export default function AssetListPage() {
           onCopyToProject={() => setCopyToProjectDialogOpen(true)}
           visibleColumnsCount={displayedColumns?.length || 0}
           filters={activeView?.filters || []}
-          activeAssetType={activeAssetType}
+          activeAssetTypes={activeAssetTypes}
           assetCounts={mockAssetCounts}
-          onAssetTypeChange={handleAssetTypeChange}
+          onAssetTypesChange={handleAssetTypesChange}
           assetTypeLoading={assetTypeLoading}
         />
 
@@ -1334,7 +1337,7 @@ export default function AssetListPage() {
                     assets={filteredAssets}
                     selectedAssetIds={selectedRows}
                     filteredAssetIds={filteredAssets.map(a => a.id)}
-                    assetType={activeAssetType}
+                    assetTypes={activeAssetTypes}
                     onAssetSelect={(ids) => {
                       setSelectedRows(ids);
                       // Scroll to first selected row in table
@@ -1394,7 +1397,7 @@ export default function AssetListPage() {
                   <SnapshotsPanel
                     asset={selectedAssetForSnapshots}
                     selectedAssets={selectedRows.length > 1 ? filteredAssets.filter(a => selectedRows.includes(a.id)) : []}
-                    assetType={activeAssetType}
+                    assetType={activeAssetTypes.length === 1 ? activeAssetTypes[0] : 'ML'} // For snapshots, use first type or default
                     onClose={() => {
                       setSelectedAssetForSnapshots(null);
                       setSelectedRows([]);
@@ -1402,7 +1405,8 @@ export default function AssetListPage() {
                     }}
                     onSnapshotClick={(snapshotId) => {
                       // Navigate to inspection at specific observation (only for ML/L)
-                      if (activeAssetType !== 'MH' && selectedAssetForSnapshots?.latestInspection) {
+                      const assetType = activeAssetTypes.length === 1 ? activeAssetTypes[0] : 'ML';
+                      if (assetType !== 'MH' && selectedAssetForSnapshots?.latestInspection) {
                         router.push(`/inspection/${selectedAssetForSnapshots.id}?observation=${snapshotId}`);
                       }
                     }}

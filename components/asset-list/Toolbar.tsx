@@ -51,13 +51,13 @@ interface ToolbarProps {
   visibleColumnsCount?: number; // НОВИЙ: Кількість видимих колонок
   onRemoveFilter?: (filterId: string) => void;
   // Asset Type Selector props
-  activeAssetType?: AssetType;
+  activeAssetTypes?: AssetType[]; // Support multiple types
   assetCounts?: {
     ML: number;
     MH: number;
     L: number;
   };
-  onAssetTypeChange?: (type: AssetType) => void;
+  onAssetTypesChange?: (types: AssetType[]) => void; // Support multiple types
   assetTypeLoading?: boolean;
 }
 
@@ -78,9 +78,9 @@ export default function Toolbar({
   onCopyToProject,
   filters = [],
   visibleColumnsCount,
-  activeAssetType = 'ML',
+  activeAssetTypes = ['ML'],
   assetCounts = { ML: 0, MH: 0, L: 0 },
-  onAssetTypeChange,
+  onAssetTypesChange,
   assetTypeLoading = false
 }: ToolbarProps) {
   const activeFiltersCount = filters.length;
@@ -92,12 +92,12 @@ export default function Toolbar({
           {/* Group 1: Asset Type Selector + Search Bar */}
           <div className="flex items-center gap-2">
             {/* Asset Type Selector */}
-            {onAssetTypeChange && (
+            {onAssetTypesChange && (
               <>
                 <AssetTypeSelector
-                  activeType={activeAssetType}
+                  activeTypes={activeAssetTypes}
                   counts={assetCounts}
-                  onTypeChange={onAssetTypeChange}
+                  onTypesChange={onAssetTypesChange}
                   loading={assetTypeLoading}
                 />
                 {/* Visual Separator */}
@@ -108,7 +108,7 @@ export default function Toolbar({
               assets={assets}
               onFilteredResults={onFilteredResults}
               onOpenAdvancedSearch={onOpenAdvancedSearch}
-              assetType={activeAssetType}
+              assetType={activeAssetTypes.length === 1 ? activeAssetTypes[0] : 'ML'} // For search, use first type or default
             />
           </div>
 

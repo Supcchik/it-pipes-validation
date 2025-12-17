@@ -1,26 +1,33 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AssetType } from '@/lib/types/asset-list';
-import { getAssetTypeLabel } from '@/lib/utils/asset-type-utils';
+import { 
+  getAssetTypeLabel, 
+  formatActiveTypes, 
+  areAllTypesSelected,
+  isTypeActive,
+  toggleType,
+  setAllTypes
+} from '@/lib/utils/asset-type-utils';
 
 interface AssetTypeSelectorProps {
-  activeType: AssetType;
+  activeTypes: AssetType[]; // Тепер масив типів
   counts: {
     ML: number;
     MH: number;
     L: number;
   };
-  onTypeChange: (type: AssetType) => void;
+  onTypesChange: (types: AssetType[]) => void; // Змінено на множинний вибір
   loading?: boolean;
 }
 
 export default function AssetTypeSelector({
-  activeType,
+  activeTypes,
   counts,
-  onTypeChange,
+  onTypesChange,
   loading = false
 }: AssetTypeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -29,6 +36,8 @@ export default function AssetTypeSelector({
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const types: AssetType[] = ['ML', 'MH', 'L'];
+  const allSelected = areAllTypesSelected(activeTypes);
+  const displayText = formatActiveTypes(activeTypes);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -64,6 +73,8 @@ export default function AssetTypeSelector({
         return;
       }
 
+      const totalItems = types.length + 1; // +1 for "Show All" checkbox
+
       switch (event.key) {
         case 'Escape':
           event.preventDefault();
@@ -75,20 +86,26 @@ export default function AssetTypeSelector({
           event.preventDefault();
           setFocusedIndex((prev) => {
             if (prev === null) return 0;
-            return Math.min(prev + 1, types.length - 1);
+            return Math.min(prev + 1, totalItems - 1);
           });
           break;
         case 'ArrowUp':
           event.preventDefault();
           setFocusedIndex((prev) => {
-            if (prev === null) return types.length - 1;
+            if (prev === null) return totalItems - 1;
             return Math.max(prev - 1, 0);
           });
           break;
         case 'Enter':
+        case ' ':
           event.preventDefault();
           if (focusedIndex !== null) {
-            handleTypeSelect(types[focusedIndex]);
+            if (focusedIndex < types.length) {
+              handleTypeToggle(types[focusedIndex]);
+            } else {
+              // "Show All" checkbox
+              handleSelectAll(!allSelected);
+            }
           }
           break;
       }
@@ -100,22 +117,27 @@ export default function AssetTypeSelector({
         window.removeEventListener('keydown', handleKeyDown);
       };
     }
-  }, [isOpen, focusedIndex, types]);
+  }, [isOpen, focusedIndex, types, allSelected]);
 
-  const handleTypeSelect = (type: AssetType) => {
-    if (type !== activeType && !loading) {
-      onTypeChange(type);
-    }
-    setIsOpen(false);
-    setFocusedIndex(null);
-    buttonRef.current?.focus();
+  const handleTypeToggle = (type: AssetType) => {
+    if (loading) return;
+    const newTypes = toggleType(activeTypes, type);
+    onTypesChange(newTypes);
+  };
+
+  const handleSelectAll = (selectAll: boolean) => {
+    if (loading) return;
+    const newTypes = setAllTypes(selectAll);
+    onTypesChange(newTypes);
   };
 
   const handleButtonClick = () => {
     if (!loading) {
       setIsOpen(!isOpen);
       if (!isOpen) {
-        setFocusedIndex(types.indexOf(activeType));
+        // Set focus to first selected type or first item
+        const firstSelectedIndex = types.findIndex(t => isTypeActive(activeTypes, t));
+        setFocusedIndex(firstSelectedIndex >= 0 ? firstSelectedIndex : 0);
       }
     }
   };
@@ -138,13 +160,13 @@ export default function AssetTypeSelector({
           'disabled:opacity-50 disabled:cursor-not-allowed',
           isOpen && 'bg-neutral-50 border-neutral-400'
         )}
-        aria-label="Select asset type"
+        aria-label="Select asset types"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
       >
         <span className="text-neutral-500 font-normal">Asset:</span>
         <span className="text-neutral-900 font-medium">
-          {loading ? '⏳' : activeType}
+          {loading ? '⏳' : displayText}
         </span>
         <ChevronDown
           className={cn(
@@ -180,7 +202,7 @@ export default function AssetTypeSelector({
             {/* Options */}
             <div className="py-1">
               {types.map((type, index) => {
-                const isActive = type === activeType;
+                const isChecked = isTypeActive(activeTypes, type);
                 const isFocused = focusedIndex === index;
                 const count = counts[type];
 
@@ -188,34 +210,34 @@ export default function AssetTypeSelector({
                   <button
                     key={type}
                     type="button"
-                    onClick={() => handleTypeSelect(type)}
+                    onClick={() => handleTypeToggle(type)}
                     className={cn(
                       'w-full px-4 py-2.5 flex items-center justify-between',
                       'text-sm transition-colors',
                       'hover:bg-neutral-50',
                       'focus:outline-none',
-                      isActive && 'bg-blue-50 text-blue-700',
-                      isFocused && !isActive && 'bg-neutral-100'
+                      isChecked && 'bg-blue-50 text-blue-700',
+                      isFocused && !isChecked && 'bg-neutral-100'
                     )}
                     role="option"
-                    aria-selected={isActive}
+                    aria-selected={isChecked}
                   >
                     <div className="flex items-center gap-3">
-                      {/* Radio button */}
+                      {/* Checkbox */}
                       <div
                         className={cn(
-                          'w-4 h-4 rounded-full border-2 flex items-center justify-center',
-                          isActive
+                          'w-4 h-4 rounded border-2 flex items-center justify-center transition-colors',
+                          isChecked
                             ? 'border-blue-600 bg-blue-600'
-                            : 'border-neutral-300'
+                            : 'border-neutral-300 bg-white'
                         )}
                       >
-                        {isActive && (
-                          <div className="w-2 h-2 rounded-full bg-white" />
+                        {isChecked && (
+                          <Check className="w-3 h-3 text-white" />
                         )}
                       </div>
                       {/* Label */}
-                      <span className={cn('font-medium', isActive && 'text-blue-700')}>
+                      <span className={cn('font-medium', isChecked && 'text-blue-700')}>
                         {getAssetTypeLabel(type)}
                       </span>
                     </div>
@@ -226,6 +248,43 @@ export default function AssetTypeSelector({
                   </button>
                 );
               })}
+              
+              {/* Divider */}
+              <div className="h-px bg-neutral-200 my-1" />
+              
+              {/* Show All Types checkbox */}
+              <button
+                type="button"
+                onClick={() => handleSelectAll(!allSelected)}
+                className={cn(
+                  'w-full px-4 py-2.5 flex items-center gap-3',
+                  'text-sm transition-colors',
+                  'hover:bg-neutral-50',
+                  'focus:outline-none',
+                  allSelected && 'bg-blue-50 text-blue-700',
+                  focusedIndex === types.length && !allSelected && 'bg-neutral-100'
+                )}
+                role="option"
+                aria-selected={allSelected}
+              >
+                {/* Checkbox */}
+                <div
+                  className={cn(
+                    'w-4 h-4 rounded border-2 flex items-center justify-center transition-colors',
+                    allSelected
+                      ? 'border-blue-600 bg-blue-600'
+                      : 'border-neutral-300 bg-white'
+                  )}
+                >
+                  {allSelected && (
+                    <Check className="w-3 h-3 text-white" />
+                  )}
+                </div>
+                {/* Label */}
+                <span className={cn('font-medium', allSelected && 'text-blue-700')}>
+                  Show All Types
+                </span>
+              </button>
             </div>
           </div>
         </>
@@ -233,5 +292,3 @@ export default function AssetTypeSelector({
     </div>
   );
 }
-
-

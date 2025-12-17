@@ -116,4 +116,65 @@ export function assetTypeToUrl(type: AssetType): string {
   return type.toLowerCase();
 }
 
+/**
+ * Форматує масив типів для відображення на кнопці
+ * Приклади: ['ML'] -> "ML", ['ML', 'MH'] -> "ML+MH", ['ML', 'MH', 'L'] -> "All"
+ */
+export function formatActiveTypes(types: AssetType[]): string {
+  if (types.length === 0) return 'ML'; // Default fallback
+  if (types.length === 3) return 'All';
+  if (types.length === 1) return types[0];
+  return types.sort().join('+'); // Sort for consistency: ML+MH, ML+L, MH+L
+}
+
+/**
+ * Перевіряє чи всі типи вибрані
+ */
+export function areAllTypesSelected(types: AssetType[]): boolean {
+  return types.length === 3;
+}
+
+/**
+ * Отримує масив типів з рядка (зворотна операція до formatActiveTypes)
+ */
+export function parseActiveTypes(value: string): AssetType[] {
+  if (value === 'All') return ['ML', 'MH', 'L'];
+  if (value.includes('+')) {
+    return value.split('+').filter(isValidAssetType) as AssetType[];
+  }
+  if (isValidAssetType(value)) {
+    return [value];
+  }
+  return ['ML']; // Default fallback
+}
+
+/**
+ * Перевіряє чи тип активний в масиві типів
+ */
+export function isTypeActive(types: AssetType[], type: AssetType): boolean {
+  return types.includes(type);
+}
+
+/**
+ * Додає або видаляє тип з масиву
+ */
+export function toggleType(types: AssetType[], type: AssetType): AssetType[] {
+  if (types.includes(type)) {
+    // Видаляємо тип
+    const newTypes = types.filter(t => t !== type);
+    // Якщо залишився хоча б один тип, повертаємо новий масив
+    return newTypes.length > 0 ? newTypes : ['ML']; // Мінімум один тип має бути вибраний
+  } else {
+    // Додаємо тип
+    return [...types, type].sort(); // Сортуємо для консистентності
+  }
+}
+
+/**
+ * Встановлює всі типи або один тип
+ */
+export function setAllTypes(selectAll: boolean): AssetType[] {
+  return selectAll ? ['ML', 'MH', 'L'] : ['ML'];
+}
+
 

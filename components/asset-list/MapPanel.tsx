@@ -25,7 +25,7 @@ interface MapPanelProps {
   filters?: FilterConfig[];
   onPlotPointClick?: (observationId: string) => void;
   onPipeClick?: (assetId: string) => void;
-  assetType?: AssetType; // Active asset type (ML, MH, or L)
+  assetTypes?: AssetType[]; // Active asset types (ML, MH, L, or combinations)
 }
 
 // Style constants
@@ -51,7 +51,7 @@ export default function MapPanel({
   onMapClick,
   onPlotPointClick,
   onPipeClick,
-  assetType = 'ML' // Default to Mainlines
+  assetTypes = ['ML'] // Default to Mainlines
 }: MapPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -112,10 +112,18 @@ export default function MapPanel({
   const [hoveredPlotPoint, setHoveredPlotPoint] = useState<string | null>(null);
   const [visibleGrades, setVisibleGrades] = useState<number[]>([0, 1, 2, 3, 4, 5]);
 
-  // Filter assets by active type
+  // Filter assets by active types (support multiple types)
   const assetsByType = useMemo(() => {
-    return assets.filter(asset => asset.asset_type === assetType);
-  }, [assets, assetType]);
+    return assets.filter(asset => assetTypes.includes(asset.asset_type));
+  }, [assets, assetTypes]);
+  
+  // Check if combined view (multiple types)
+  const isCombinedView = assetTypes.length > 1;
+  
+  // Determine which types are active/inactive (support multiple types)
+  const isMLActive = useMemo(() => assetTypes.includes('ML'), [assetTypes]);
+  const isLActive = useMemo(() => assetTypes.includes('L'), [assetTypes]);
+  const isMHActive = useMemo(() => assetTypes.includes('MH'), [assetTypes]);
 
   // Get filtered asset IDs (if not provided, use all assets of current type)
   const effectiveFilteredAssetIds = useMemo(() => {
@@ -131,9 +139,14 @@ export default function MapPanel({
 
     // Get all coordinates for these assets
     const coordinates: { lat: number; lng: number }[] = [];
+    
+    // Check which types are active
+    const mlActive = assetTypes.includes('ML');
+    const lActive = assetTypes.includes('L');
+    const mhActive = assetTypes.includes('MH');
 
     // Get pipes for these assets (ML and L)
-    if (assetType === 'ML' || assetType === 'L') {
+    if (mlActive || lActive) {
       assetIds.forEach(assetId => {
         const pipe = getPipeSegmentByAssetId(assetId);
         if (pipe) {
@@ -143,7 +156,7 @@ export default function MapPanel({
     }
 
     // Get manholes for these assets (MH)
-    if (assetType === 'MH') {
+    if (mhActive) {
       assetIds.forEach(assetId => {
         const asset = assetsByType.find(a => a.id === assetId);
         if (asset && asset.geometry && asset.geometry.type === 'Point') {
@@ -182,7 +195,7 @@ export default function MapPanel({
 
     setCenter({ lat: centerLat, lng: centerLng });
     setZoom(newZoom);
-  }, [assetsByType, assetType]);
+  }, [assetsByType, assetTypes]);
 
   // Track previous values to avoid unnecessary zooms
   const prevFilteredRef = useRef<string>('');
@@ -538,10 +551,7 @@ export default function MapPanel({
       ctx.stroke();
     }
 
-    // Determine which types are active/inactive
-    const isMLActive = assetType === 'ML';
-    const isLActive = assetType === 'L';
-    const isMHActive = assetType === 'MH';
+    // Use pre-computed active type flags
     
     // Draw pipe segments (for ML and L)
     if (layers.sewerLines && (isMLActive || isLActive)) {
@@ -551,7 +561,7 @@ export default function MapPanel({
         const isActiveType = pipeAsset !== undefined;
         
         // For inactive types, show as gray background
-        if (!isActiveType && (assetType === 'MH')) {
+        if (!isActiveType && (assetTypes.includes('MH') && !isMLActive && !isLActive)) {
           // Draw inactive pipes (gray, thin, low opacity)
           ctx.strokeStyle = '#D1D5DB';
           ctx.lineWidth = 1;
@@ -687,7 +697,7 @@ export default function MapPanel({
         const isActiveType = relatedAssets.length > 0;
         
         // For inactive types, show as gray background
-        if (!isActiveType && (assetType === 'ML' || assetType === 'L')) {
+        if (!isActiveType && ((isMLActive || isLActive) && !isMHActive)) {
           // Draw inactive manholes (gray, small, low opacity)
           const { x, y } = latLngToXY(manhole.coordinates.lat, manhole.coordinates.lng);
           ctx.beginPath();
@@ -777,7 +787,7 @@ export default function MapPanel({
       ctx.strokeRect(selectionStart.x, selectionStart.y, width, height);
       ctx.setLineDash([]);
     }
-  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assetsByType, plotPoints, visibleGrades, hoveredPlotPoint, drawHeatMapOverlay, displayOptions, assetType]);
+  }, [zoom, center, hoveredItem, selectedAssetIds, effectiveFilteredAssetIds, layers, selectionTool, selectionStart, selectionEnd, panOffset, latLngToXY, assetsByType, plotPoints, visibleGrades, hoveredPlotPoint, drawHeatMapOverlay, displayOptions, assetTypes, isMLActive, isLActive, isMHActive]);
 
   // Mouse handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -943,8 +953,8 @@ export default function MapPanel({
 
   // Feature detection (only for active asset type)
   const detectFeatureAtPoint = (x: number, y: number): { type: 'manhole' | 'pipe'; id: string } | null => {
-    // Check manholes (only if MH is active)
-    if (assetType === 'MH') {
+           // Check manholes (only if MH is active)
+    if (assetTypes.includes('MH')) {
       for (const manhole of MOCK_MANHOLES) {
         const relatedAssets = assetsByType.filter(a => 
           a.upstreamMH === manhole.name || a.downstreamMH === manhole.name || a.manholeId === manhole.name
@@ -961,9 +971,9 @@ export default function MapPanel({
     }
 
     // Check pipes and laterals (only if ML or L is active)
-    if (assetType === 'ML' || assetType === 'L') {
+    if (isMLActive || isLActive) {
       // Check MOCK_PIPE_SEGMENTS (for ML)
-      if (assetType === 'ML') {
+      if (isMLActive) {
         for (const pipe of MOCK_PIPE_SEGMENTS) {
           // Check if this pipe belongs to current asset type
           const pipeAsset = assetsByType.find(a => a.id === pipe.assetId);
@@ -1013,7 +1023,7 @@ export default function MapPanel({
       }
       
       // Check laterals from geometry (for L)
-      if (assetType === 'L') {
+      if (isLActive) {
         for (const asset of assetsByType) {
           if (asset.asset_type === 'L' && asset.geometry && asset.geometry.type === 'LineString' && effectiveFilteredAssetIds.includes(asset.id)) {
             const coords = asset.geometry.coordinates as [number, number][];
@@ -1078,7 +1088,7 @@ export default function MapPanel({
     const selectedIds: string[] = [];
 
     // Check manholes in box (only if MH is active)
-    if (assetType === 'MH') {
+    if (assetTypes.includes('MH')) {
       MOCK_MANHOLES.forEach(manhole => {
         const relatedAssets = assetsByType.filter(a => 
           a.upstreamMH === manhole.name || a.downstreamMH === manhole.name || a.manholeId === manhole.name
@@ -1097,9 +1107,9 @@ export default function MapPanel({
     }
 
     // Check pipes and laterals in box (only if ML or L is active)
-    if (assetType === 'ML' || assetType === 'L') {
+    if (isMLActive || isLActive) {
       // Check MOCK_PIPE_SEGMENTS (for ML)
-      if (assetType === 'ML') {
+      if (isMLActive) {
         MOCK_PIPE_SEGMENTS.forEach(pipe => {
           // Check if this pipe belongs to current asset type
           const pipeAsset = assetsByType.find(a => a.id === pipe.assetId);
@@ -1117,7 +1127,7 @@ export default function MapPanel({
       }
       
       // Check laterals from geometry (for L)
-      if (assetType === 'L') {
+      if (isLActive) {
         assetsByType.forEach(asset => {
           if (asset.asset_type === 'L' && asset.geometry && asset.geometry.type === 'LineString' && effectiveFilteredAssetIds.includes(asset.id)) {
             const coords = asset.geometry.coordinates as [number, number][];

@@ -67,4 +67,27 @@ export function getColumnsByType(type: 'ML' | 'MH' | 'L'): ColumnDef[] {
   }
 }
 
+/**
+ * Get all columns from multiple asset types, merging them without duplicates
+ * Used for combined view when multiple types are selected
+ */
+export function getAllColumnsForTypes(types: ('ML' | 'MH' | 'L')[]): ColumnDef[] {
+  const columnMap = new Map<string, ColumnDef>();
+  
+  // Collect all columns from all types
+  types.forEach(type => {
+    const columns = getColumnsByType(type);
+    columns.forEach(col => {
+      // Use field+table as unique key to avoid duplicates
+      const key = `${col.field}_${col.table}`;
+      if (!columnMap.has(key)) {
+        columnMap.set(key, col);
+      }
+    });
+  });
+  
+  // Return as array
+  return Array.from(columnMap.values());
+}
+
 
