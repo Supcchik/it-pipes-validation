@@ -122,7 +122,7 @@ export const mockManholes: Asset[] = [
     geometry: {
       type: 'Point' as const,
       // Use NYC area coordinates to match manholes (40.7580, -73.9860)
-      coordinates: [40.7580 + (Math.floor(i / 6) * 0.0015), -73.9860 + ((i % 6) * 0.0015)]
+      coordinates: [40.7580 + (Math.floor(i / 6) * 0.0015), -73.9860 + ((i % 6) * 0.0015)] as [number, number]
     }
   }))
 ];
