@@ -37,6 +37,7 @@ import type {
   Asset,
   GroupFilterState,
   SimpleFilterState,
+  AdvancedFilterState,
   FilterMode,
 } from '@/lib/types/asset-list';
 import { mockColumnDefs } from '@/lib/mock-data/asset-list';
