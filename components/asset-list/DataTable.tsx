@@ -462,8 +462,8 @@ export default function DataTable({
 
       // Save all fields
       const result = onUpdateAsset(editingRowId, editingValues);
-      if (result instanceof Promise) {
-        await result;
+      if (result && typeof (result as any).then === 'function') {
+        await (result as Promise<void>);
       }
       
       // Clear saving indicator
