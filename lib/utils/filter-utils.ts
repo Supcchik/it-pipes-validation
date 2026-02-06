@@ -331,6 +331,27 @@ export function normalizeFilters(view: { filters: FilterConfig[] } & Partial<{
   };
 }
 
+/** View-подібний об'єкт для збору полів фільтрів */
+type ViewLikeForFilterFields = { filters?: FilterConfig[] } & Partial<{
+  simpleFilters: SimpleFilterState;
+  groupFilters: GroupFilterState;
+  advancedFilters: AdvancedFilterState;
+}>;
+
+/**
+ * Зібрати всі унікальні field ID з фільтрів view (для A/B Variant A: перевірка прихованих колонок).
+ */
+export function getFilterFieldsFromView(view: ViewLikeForFilterFields | null | undefined): string[] {
+  if (!view) return [];
+  const legacy = Array.isArray(view.filters) ? view.filters : [];
+  const fromLegacy = legacy.map((c) => c.field);
+  const fromSimple = view.simpleFilters?.conditions?.map((c) => c.field) ?? [];
+  const fromGroups = view.groupFilters?.groups?.flatMap((g) => g.conditions.map((c) => c.field)) ?? [];
+  const fromAdvanced = view.advancedFilters?.groups?.flatMap((g) => g.conditions.map((c) => c.field)) ?? [];
+  const all = [...fromLegacy, ...fromSimple, ...fromGroups, ...fromAdvanced];
+  return Array.from(new Set(all));
+}
+
 /**
  * Перевіряє, чи один Asset задовольняє конкретний FilterConfig.
  * Ця логіка повторює поточну у app/page.tsx та ViewSettingsDialog.

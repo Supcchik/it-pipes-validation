@@ -11,6 +11,8 @@ import { mockColumnDefs } from '@/lib/mock-data/asset-list';
 interface FilterGroupsEditorProps {
   state: GroupFilterState;
   onChange: (next: GroupFilterState) => void;
+  /** Variant B: тільки ці колонки доступні для фільтрів (видимі колонки view) */
+  availableColumns?: ColumnDef[];
 }
 
 /**
@@ -18,10 +20,11 @@ interface FilterGroupsEditorProps {
  *
  * OR між групами, AND всередині групи.
  */
-export default function FilterGroupsEditor({ state, onChange }: FilterGroupsEditorProps) {
+export default function FilterGroupsEditor({ state, onChange, availableColumns }: FilterGroupsEditorProps) {
   const groups = state.groups || [];
 
   const getFilterableColumns = (): ColumnDef[] => {
+    if (availableColumns && availableColumns.length > 0) return availableColumns;
     return mockColumnDefs.filter((col) => col.filterable);
   };
 

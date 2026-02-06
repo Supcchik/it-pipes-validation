@@ -56,12 +56,14 @@ function SortableColumnHeader({
   onColumnReorder,
   isMounted,
   showShadowRight = false,
+  isHighlighted = false,
 }: {
   column: ColumnDef;
   onSort: (column: string, direction: 'asc' | 'desc') => void;
   onColumnReorder?: (newOrder: string[]) => void;
   isMounted: boolean;
   showShadowRight?: boolean;
+  isHighlighted?: boolean;
 }) {
   // Always call useSortable (hooks rules), but only use it after mount
   const sortable = useSortable({ id: column.id });
@@ -78,9 +80,10 @@ function SortableColumnHeader({
       scope="col"
       aria-label={column.label}
       className={cn(
-        'px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[#4D505A] bg-[#FAFAFA] border-b border-[#E4E4E7]',
+        'px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[#4D505A] bg-[#FAFAFA] border-b border-[#E4E4E7] transition-colors duration-300',
         isPipeSegment && 'sticky left-12 z-20 min-w-[10rem]',
-        column.sortable && 'cursor-pointer hover:bg-neutral-100 group'
+        column.sortable && 'cursor-pointer hover:bg-neutral-100 group',
+        isHighlighted && 'bg-amber-100 ring-1 ring-amber-300 ring-inset'
       )}
       style={showShadowRight && isPipeSegment ? { boxShadow: STICKY_SHADOW_RIGHT } : undefined}
       onClick={(e) => {
@@ -139,6 +142,8 @@ interface DataTableProps {
   onDuplicate?: (asset: Asset) => void; // НОВИЙ: для duplicate action
   onDelete?: (asset: Asset) => void; // НОВИЙ: для delete action
   loading?: boolean;
+  /** Variant A: колонки, щойно додані через filter notification — показувати highlight на заголовку */
+  highlightedColumnIds?: string[];
 }
 
 export default function DataTable({
@@ -153,7 +158,8 @@ export default function DataTable({
   onStartEditing,
   onDuplicate,
   onDelete,
-  loading = false
+  loading = false,
+  highlightedColumnIds = [],
 }: DataTableProps) {
   const router = useRouter();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -735,6 +741,7 @@ export default function DataTable({
           onColumnReorder={onColumnReorder}
           isMounted={isMounted}
           showShadowRight={scrollShadows.left}
+          isHighlighted={highlightedColumnIds.includes(column.id)}
         />
       ))}
 

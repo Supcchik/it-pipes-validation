@@ -17,6 +17,20 @@
   animation: flash-highlight 1s ease-in-out;
 }
 
+/* Легка пульсація для popover-сповіщення (filter column mismatch) */
+@keyframes notification-pulse {
+  0%, 100% {
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(232, 111, 37, 0.2);
+  }
+  50% {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 0 0 2px rgba(232, 111, 37, 0.35);
+  }
+}
+
+.notification-pulse {
+  animation: notification-pulse 2.5s ease-in-out infinite;
+}
+
 /* Floating selection bar animation */
 @keyframes fadeInUp {
   from {

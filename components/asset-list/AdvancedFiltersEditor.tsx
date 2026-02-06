@@ -6,18 +6,23 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { AdvancedFilterState, AdvancedGroup, ConditionWithOperator, FilterConfig } from '@/lib/types/asset-list';
+import type { AdvancedFilterState, AdvancedGroup, ConditionWithOperator, FilterConfig, ColumnDef } from '@/lib/types/asset-list';
 import { mockColumnDefs } from '@/lib/mock-data/asset-list';
 
 interface AdvancedFiltersEditorProps {
   state: AdvancedFilterState;
   onChange: (next: AdvancedFilterState) => void;
+  /** Variant B: тільки ці колонки доступні для фільтрів (видимі колонки view) */
+  availableColumns?: ColumnDef[];
 }
 
-export default function AdvancedFiltersEditor({ state, onChange }: AdvancedFiltersEditorProps) {
+export default function AdvancedFiltersEditor({ state, onChange, availableColumns }: AdvancedFiltersEditorProps) {
   const groups = state.groups || [];
 
-  const getFilterableColumns = () => mockColumnDefs.filter((col) => col.filterable);
+  const getFilterableColumns = (): ColumnDef[] => {
+    if (availableColumns && availableColumns.length > 0) return availableColumns;
+    return mockColumnDefs.filter((col) => col.filterable);
+  };
 
   const getFieldType = (fieldId: string, table: string): string => {
     const col = mockColumnDefs.find((c) => c.id === fieldId && c.table === table);

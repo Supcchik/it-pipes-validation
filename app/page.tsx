@@ -30,18 +30,23 @@ import CopyToProjectDialog from '@/components/asset-list/CopyToProjectDialog';
 import DeleteConfirmDialog from '@/components/asset-list/DeleteConfirmDialog';
 import RemoveFilterConfirmDialog from '@/components/asset-list/RemoveFilterConfirmDialog';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
 import { mockAssetCounts, getAssetsByType } from '@/lib/mock-data/asset-types';
 import type { View, Asset, ColumnDef, FilterConfig, AssetType } from '@/lib/types/asset-list';
 import { cn } from '@/lib/utils';
-import { normalizeFilters, applyFilters, assetMatchesFilter } from '@/lib/utils/filter-utils';
+import { normalizeFilters, applyFilters, assetMatchesFilter, getFilterFieldsFromView } from '@/lib/utils/filter-utils';
+import { padWithSyntheticAssets } from '@/lib/utils/synthetic-assets';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
 import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl, formatActiveTypes, areAllTypesSelected } from '@/lib/utils/asset-type-utils';
 import { getColumnsByType, getAllColumnsForTypes } from '@/lib/utils/column-schemas';
+import { ABTestProvider, useABTest } from '@/lib/contexts/ab-test-context';
+import FilterColumnMismatchNotification, { type FilterColumnMismatchItem } from '@/components/asset-list/FilterColumnMismatchNotification';
 
 function AssetListPageContent(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const abTest = useABTest();
 
   // State management
   const [views, setViews] = useState<View[]>(() => {
@@ -159,6 +164,13 @@ function AssetListPageContent(): React.JSX.Element {
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
+
+  // Variant A: notification при фільтрі по прихованій колонці; колонки додані через notification; highlight нових колонок
+  const [filterMismatchColumns, setFilterMismatchColumns] = useState<FilterColumnMismatchItem[] | null>(null);
+  const [columnsAddedViaFilter, setColumnsAddedViaFilter] = useState<Set<string>>(new Set());
+  const [highlightedColumnIds, setHighlightedColumnIds] = useState<string[]>([]);
+  // Variant A: при очищенні фільтра — підтвердження "Remove column that was added for filtering?"
+  const [removeFilterColumnConfirm, setRemoveFilterColumnConfirm] = useState<{ filterId: string; fieldId: string; label: string } | null>(null);
 
   // Get active view with safe fallback
   const activeView = useMemo(() => {
@@ -514,6 +526,11 @@ function AssetListPageContent(): React.JSX.Element {
       });
     }
 
+    // Якщо після фільтрів залишилось менше 3 записів — доповнити синтетичними (щоб завжди було мінімум 3 рядки для тесту)
+    if (activeView && filtered.length < 3) {
+      filtered = padWithSyntheticAssets(filtered, normalized, temporaryFilters);
+    }
+
     return filtered;
   }, [simpleSearchResults, activeView, searchQuery, assets, activeAssetTypes, temporaryFilters]);
 
@@ -632,6 +649,43 @@ function AssetListPageContent(): React.JSX.Element {
     }
   }, [selectedRows, filteredAssets]);
 
+  // Variant A: зняти highlight з колонок через 3 с
+  useEffect(() => {
+    if (highlightedColumnIds.length === 0) return;
+    const t = setTimeout(() => setHighlightedColumnIds([]), 3000);
+    return () => clearTimeout(t);
+  }, [highlightedColumnIds]);
+
+  // Variant A: додати колонки з notification до view і показати highlight
+  const handleFilterMismatchAddColumns = (columnIds: string[]) => {
+    if (columnIds.length === 0 || !activeView) {
+      setFilterMismatchColumns(null);
+      return;
+    }
+    const currentDisplayed = activeView.displayedColumns || activeView.columnOrder || [];
+    const newDisplayed = [...currentDisplayed];
+    const currentOrder = activeView.columnOrder || activeView.displayedColumns || [];
+    const newOrder = [...currentOrder];
+    columnIds.forEach((id) => {
+      if (!newDisplayed.includes(id)) newDisplayed.push(id);
+      if (!newOrder.includes(id)) newOrder.push(id);
+    });
+    const updatedView: View = {
+      ...activeView,
+      displayedColumns: newDisplayed,
+      columnOrder: newOrder,
+      updatedAt: new Date().toISOString().split('T')[0],
+    };
+    setViews(views.map((v) => (v.id === activeView.id ? updatedView : v)));
+    setColumnsAddedViaFilter((prev) => new Set([...prev, ...columnIds]));
+    setHighlightedColumnIds(columnIds);
+    setFilterMismatchColumns(null);
+  };
+
+  const handleFilterMismatchKeepHidden = () => {
+    setFilterMismatchColumns(null);
+  };
+
   // Handle Duplicate
   const handleDuplicate = (asset: Asset) => {
     // Create a copy of the asset with new ID
@@ -706,6 +760,19 @@ function AssetListPageContent(): React.JSX.Element {
     if (updatedView.id === activeViewId) {
       setActiveViewId(updatedView.id);
     }
+    // Variant A: після Apply фільтра перевіряємо, чи є фільтри по прихованих колонках
+    if (abTest.variant === 'A') {
+      const filterFields = getFilterFieldsFromView(updatedView);
+      const visibleIds = updatedView.displayedColumns || updatedView.columnOrder || [];
+      const hiddenFields = filterFields.filter((f) => !visibleIds.includes(f));
+      if (hiddenFields.length > 0) {
+        const items: FilterColumnMismatchItem[] = hiddenFields.map((id) => {
+          const col = mockColumnDefs.find((c) => c.id === id || c.field === id);
+          return { id, label: col?.label ?? id };
+        });
+        setFilterMismatchColumns(items);
+      }
+    }
   };
 
   // Handle column reorder in table
@@ -744,23 +811,47 @@ function AssetListPageContent(): React.JSX.Element {
   // Handle remove Simple filter (from simpleFilters)
   const handleRemoveSimpleFilter = (filterId: string) => {
     if (!activeView) return;
-    
     const currentSimpleFilters = activeView.simpleFilters?.conditions || activeView.filters || [];
-    const updatedFilters = currentSimpleFilters.filter(f => f.id !== filterId);
-    
+    const filter = currentSimpleFilters.find((f) => f.id === filterId);
+    // Variant A: якщо колонка була додана через filter notification — запитати Remove / Keep
+    if (abTest.variant === 'A' && filter && columnsAddedViaFilter.has(filter.field)) {
+      const col = mockColumnDefs.find((c) => c.id === filter.field || c.field === filter.field);
+      setRemoveFilterColumnConfirm({
+        filterId,
+        fieldId: filter.field,
+        label: col?.label ?? filter.field,
+      });
+      return;
+    }
+    applyRemoveSimpleFilter(filterId);
+  };
+
+  const applyRemoveSimpleFilter = (filterId: string, alsoRemoveColumn?: string) => {
+    if (!activeView) return;
+    const currentSimpleFilters = activeView.simpleFilters?.conditions || activeView.filters || [];
+    const updatedFilters = currentSimpleFilters.filter((f) => f.id !== filterId);
+    let displayedColumns = activeView.displayedColumns || activeView.columnOrder || [];
+    let columnOrder = activeView.columnOrder || activeView.displayedColumns || [];
+    if (alsoRemoveColumn) {
+      displayedColumns = displayedColumns.filter((id) => id !== alsoRemoveColumn);
+      columnOrder = columnOrder.filter((id) => id !== alsoRemoveColumn);
+    }
     const updatedView: View = {
       ...activeView,
-      simpleFilters: {
-        type: 'simple',
-        conditions: updatedFilters,
-      },
-      filters: updatedFilters, // Для backward compatibility
-      updatedAt: new Date().toISOString().split('T')[0]
+      simpleFilters: { type: 'simple', conditions: updatedFilters },
+      filters: updatedFilters,
+      displayedColumns,
+      columnOrder,
+      updatedAt: new Date().toISOString().split('T')[0],
     };
-    
-    setViews(views.map(v => 
-      v.id === activeView.id ? updatedView : v
-    ));
+    setViews(views.map((v) => (v.id === activeView.id ? updatedView : v)));
+    if (alsoRemoveColumn) {
+      setColumnsAddedViaFilter((prev) => {
+        const next = new Set(prev);
+        next.delete(alsoRemoveColumn);
+        return next;
+      });
+    }
   };
 
   // Handle remove Filter Set (group) - показуємо модалку підтвердження
@@ -1257,11 +1348,19 @@ function AssetListPageContent(): React.JSX.Element {
   return (
     <div className="flex flex-col h-screen bg-neutral-50 pt-14">
       <Header
-        projectName="CityTestQA"
-        onProjectChange={(projectId) => {
-          console.log('Project changed:', projectId);
-        }}
-      />
+          projectName="CityTestQA"
+          onProjectChange={(projectId) => {
+            console.log('Project changed:', projectId);
+          }}
+        />
+
+      {filterMismatchColumns && filterMismatchColumns.length > 0 && (
+        <FilterColumnMismatchNotification
+          columns={filterMismatchColumns}
+          onAddSelected={handleFilterMismatchAddColumns}
+          onKeepHidden={handleFilterMismatchKeepHidden}
+        />
+      )}
 
       <ViewTabs
         views={views}
@@ -1343,6 +1442,7 @@ function AssetListPageContent(): React.JSX.Element {
                   onUpdateAsset={handleUpdateAsset}
                   onDuplicate={handleDuplicate}
                   onDelete={handleDelete}
+                  highlightedColumnIds={highlightedColumnIds}
                 />
               </div>
 
@@ -1568,6 +1668,7 @@ function AssetListPageContent(): React.JSX.Element {
         onSave={handleSaveView}
         assets={assets}
         defaultTab={viewSettingsDefaultTab}
+        columnsAddedViaFilter={Array.from(columnsAddedViaFilter)}
       />
 
       <SearchDialog
@@ -1671,6 +1772,46 @@ function AssetListPageContent(): React.JSX.Element {
         />
       )}
 
+      {/* Variant A: підтвердження при очищенні фільтра — видалити колонку, додану через notification? */}
+      {removeFilterColumnConfirm && (
+        <Dialog
+          open={!!removeFilterColumnConfirm}
+          onOpenChange={(open) => {
+            if (!open) setRemoveFilterColumnConfirm(null);
+          }}
+        >
+          <DialogContent className="rounded-2xl border border-[#E4E4E7] bg-white p-6">
+            <DialogTitle className="text-[#09090B] text-lg font-semibold">
+              Remove column?
+            </DialogTitle>
+            <p className="text-sm text-[#3F3F46] mt-2">
+              Remove <strong>{removeFilterColumnConfirm.label}</strong> column that was added for filtering?
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  applyRemoveSimpleFilter(removeFilterColumnConfirm.filterId);
+                  setRemoveFilterColumnConfirm(null);
+                }}
+              >
+                Keep
+              </Button>
+              <Button
+                variant="default"
+                className="bg-[#E86F25] hover:bg-[#D1621E]"
+                onClick={() => {
+                  applyRemoveSimpleFilter(removeFilterColumnConfirm.filterId, removeFilterColumnConfirm.fieldId);
+                  setRemoveFilterColumnConfirm(null);
+                }}
+              >
+                Remove
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {validationErrors.length > 0 && (
         <Dialog open={validationErrorsOpen} onOpenChange={setValidationErrorsOpen}>
           <DialogContent className="flex flex-col p-0 !fixed !top-14 !right-6 !bottom-14 !left-6 !translate-x-0 !translate-y-0 !w-[calc(100vw-48px)] !max-w-[calc(100vw-48px)] !h-[calc(100vh-112px)] sm:max-w-[calc(100vw-48px)]">
@@ -1742,8 +1883,10 @@ function AssetListPageContent(): React.JSX.Element {
 
 export default function AssetListPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
-      <AssetListPageContent />
-    </Suspense>
+    <ABTestProvider>
+      <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+        <AssetListPageContent />
+      </Suspense>
+    </ABTestProvider>
   );
 }

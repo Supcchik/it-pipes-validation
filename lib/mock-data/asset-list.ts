@@ -1,4 +1,5 @@
 import type { View, Asset, ColumnDef } from '@/lib/types/asset-list';
+import { generateFilterTestAssets } from './asset-list-filter-test';
 
 // Mock Views
 export const mockViews: View[] = [
@@ -112,6 +113,8 @@ export const mockAssets: Asset[] = [
     downstreamMH: 'MH-101',
     material: 'PVC',
     width: 12,
+    yearConstructed: 2018,
+    yearRenewed: 2022,
     latestInspection: {
       id: 'insp-1',
       certificateNumber: 'CERT-2025-001',
@@ -138,6 +141,8 @@ export const mockAssets: Asset[] = [
     downstreamMH: 'MH-102',
     material: 'Clay',
     width: 8,
+    yearConstructed: 2015,
+    yearRenewed: 2013,
     latestInspection: {
       id: 'insp-2',
       certificateNumber: 'CERT-2025-002',
@@ -164,6 +169,8 @@ export const mockAssets: Asset[] = [
     downstreamMH: 'MH-103',
     material: 'Concrete',
     width: 15,
+    yearConstructed: 2013,
+    yearRenewed: 2020,
     latestInspection: {
       id: 'insp-3',
       certificateNumber: 'CERT-2025-003',
@@ -179,33 +186,8 @@ export const mockAssets: Asset[] = [
     hasDefects: false,
     maxGrade: 1
   },
-  // Generate 27 more assets
-  ...Array.from({ length: 27 }, (_, i) => ({
-    id: `asset-${i + 4}`,
-    asset_type: 'ML' as const,
-    pipeSegment: `ML-${String(i + 4).padStart(3, '0')}`,
-    project: 'CityTestQA',
-    city: 'Springfield',
-    street: `Street ${i + 4}`,
-    upstreamMH: `MH-${100 + i + 3}`,
-    downstreamMH: `MH-${100 + i + 4}`,
-    material: ['PVC', 'Clay', 'Concrete', 'HDPE'][i % 4],
-    width: [8, 10, 12, 15, 18][i % 5],
-    latestInspection: {
-      id: `insp-${i + 4}`,
-      certificateNumber: `CERT-2025-${String(i + 4).padStart(3, '0')}`,
-      date: new Date(2025, 10, 15 + (i % 12)).toISOString().split('T')[0],
-      purpose: ['Routine Inspection', 'Post-Repair', 'Emergency'][i % 3],
-      preCleaning: i % 2 === 0,
-      direction: i % 2 === 0 ? 'Downstream' : 'Upstream',
-      mediaLabel: `ML${String(i + 4).padStart(3, '0')}_2025`,
-      weather: ['Clear', 'Rainy', 'Cloudy'][i % 3],
-      surveyedBy: ['John Smith', 'Jane Doe', 'Bob Johnson'][i % 3]
-    },
-    observationCount: (i % 5) + 1,
-    hasDefects: i % 3 !== 0,
-    maxGrade: (i % 5) + 1
-  }))
+  // Моки з різними варіаціями для тестування фільтрів (завжди є хоч кілька записів під будь-який фільтр)
+  ...generateFilterTestAssets(57, 3),
 ];
 
 // Mock Column Definitions

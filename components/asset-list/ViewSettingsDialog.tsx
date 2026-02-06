@@ -49,8 +49,10 @@ import {
   groupsFromAdvanced,
   buildAdvancedFilterPreview,
   buildGroupFilterPreview,
+  getFilterFieldsFromView,
 } from '@/lib/utils/filter-utils';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { useABTestOptional } from '@/lib/contexts/ab-test-context';
 import { cn } from '@/lib/utils';
 import FilterGroupsEditor from './FilterGroupsEditor';
 import AdvancedFiltersEditor from './AdvancedFiltersEditor';
@@ -94,6 +96,8 @@ interface ViewSettingsDialogProps {
   onSave: (view: View) => void;
   assets?: Asset[]; // For preview count
   defaultTab?: 'columns' | 'filters'; // НОВИЙ: Встановити початкову вкладку
+  /** Variant A: колонки, додані через filter notification — показувати індикатор "added via filter" */
+  columnsAddedViaFilter?: string[];
 }
 
 export default function ViewSettingsDialog({
@@ -102,8 +106,11 @@ export default function ViewSettingsDialog({
   currentView,
   onSave,
   assets = [],
-  defaultTab = 'columns' // Значення за замовчуванням для backward compatibility
+  defaultTab = 'columns', // Значення за замовчуванням для backward compatibility
+  columnsAddedViaFilter = [],
 }: ViewSettingsDialogProps) {
+  const abTest = useABTestOptional();
+  const [filtersShowColumnsPanel, setFiltersShowColumnsPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [displayedColumns, setDisplayedColumns] = useState<string[]>(
     currentView.displayedColumns
@@ -284,6 +291,58 @@ export default function ViewSettingsDialog({
 
   // Remove column
   const handleRemoveColumn = (columnId: string) => {
+    const hasActiveFilter = activeFilterColumnIds.includes(columnId);
+    if (abTest?.variant === 'A' && hasActiveFilter) {
+      const ok = window.confirm('This column has an active filter. Hide anyway?');
+      if (!ok) return;
+      setDisplayedColumns(displayedColumns.filter(id => id !== columnId));
+      return;
+    }
+    if (abTest?.variant === 'B' && hasActiveFilter) {
+      const ok = window.confirm('This column has an active filter. Hiding it will remove the filter. Continue?');
+      if (!ok) return;
+      setDisplayedColumns(displayedColumns.filter(id => id !== columnId));
+      setFilters(filters.filter(f => f.field !== columnId));
+      setGroupFilters(groupFilters ? {
+        type: 'groups' as const,
+        groups: groupFilters.groups.map(g => ({
+          ...g,
+          conditions: g.conditions.filter(c => c.field !== columnId),
+        })).filter(g => g.conditions.length > 0),
+      } : null);
+      setAdvancedFilters(advancedFilters ? {
+        type: 'advanced' as const,
+        groups: advancedFilters.groups.map(g => ({
+          ...g,
+          conditions: g.conditions.filter(c => c.field !== columnId),
+        })),
+      } : null);
+      setHasUnsavedChanges(true);
+      const updatedView: View = {
+        ...currentView,
+        displayedColumns: displayedColumns.filter(id => id !== columnId),
+        columnOrder: (currentView.columnOrder || []).filter(id => id !== columnId),
+        filters: filters.filter(f => f.field !== columnId),
+        simpleFilters: { type: 'simple', conditions: filters.filter(f => f.field !== columnId) },
+        groupFilters: groupFilters ? {
+          type: 'groups' as const,
+          groups: groupFilters.groups.map(g => ({
+            ...g,
+            conditions: g.conditions.filter(c => c.field !== columnId),
+          })).filter(g => g.conditions.length > 0),
+        } : undefined,
+        advancedFilters: advancedFilters ? {
+          type: 'advanced' as const,
+          groups: advancedFilters.groups.map(g => ({
+            ...g,
+            conditions: g.conditions.filter(c => c.field !== columnId),
+          })),
+        } : undefined,
+        updatedAt: new Date().toISOString().split('T')[0],
+      };
+      onSave(updatedView);
+      return;
+    }
     setDisplayedColumns(displayedColumns.filter(id => id !== columnId));
   };
 
@@ -386,8 +445,27 @@ export default function ViewSettingsDialog({
     return col?.type || 'text';
   };
 
-  // Get filterable columns
+  // Variant B: тільки видимі колонки доступні для фільтрів
+  const visibleFilterableColumns = useMemo(() => {
+    if (abTest?.variant !== 'B') return undefined;
+    const visible = currentView.displayedColumns || currentView.columnOrder || [];
+    return mockColumnDefs.filter((col) => col.filterable && visible.includes(col.id));
+  }, [abTest?.variant, currentView.displayedColumns, currentView.columnOrder]);
+
+  // Колонки, по яких є активний фільтр (для індикатора в Manage Columns і для Variant B confirm)
+  const activeFilterColumnIds = useMemo(() => {
+    const viewLike = {
+      filters,
+      simpleFilters: { type: 'simple' as const, conditions: filters },
+      groupFilters: groupFilters ?? undefined,
+      advancedFilters: advancedFilters ?? undefined,
+    };
+    return getFilterFieldsFromView(viewLike);
+  }, [filters, groupFilters, advancedFilters]);
+
+  // Get filterable columns (для Simple mode і превʼю)
   const getFilterableColumns = (): ColumnDef[] => {
+    if (visibleFilterableColumns && visibleFilterableColumns.length > 0) return visibleFilterableColumns;
     return mockColumnDefs.filter(col => col.filterable);
   };
 
@@ -578,10 +656,14 @@ export default function ViewSettingsDialog({
   // Sortable Column Item Component
   function SortableColumnItem({ 
     columnId, 
-    onRemove 
+    onRemove,
+    isAddedViaFilter = false,
+    isFilterActive = false,
   }: { 
     columnId: string; 
     onRemove: (id: string) => void;
+    isAddedViaFilter?: boolean;
+    isFilterActive?: boolean;
   }) {
     const {
       attributes,
@@ -617,6 +699,27 @@ export default function ViewSettingsDialog({
             <GripVertical className="h-5 w-5" />
           </button>
           <span className="text-sm font-normal text-[#18181B] truncate">{col?.label}</span>
+          {isAddedViaFilter && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="shrink-0 flex items-center gap-1 text-[10px] text-[#71717A] bg-[#F4F4F5] px-1.5 py-0.5 rounded">
+                  <ListFilter className="h-3 w-3" />
+                  added via filter
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>This column was added from the filter notification</TooltipContent>
+            </Tooltip>
+          )}
+          {isFilterActive && !isAddedViaFilter && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="shrink-0 text-[#E86F25]" aria-label="Active filter">
+                  <ListFilter className="h-3.5 w-3.5" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Active filter on this column</TooltipContent>
+            </Tooltip>
+          )}
         </div>
         <Button
           variant="ghost"
@@ -727,9 +830,9 @@ export default function ViewSettingsDialog({
   // Визначаємо, яку секцію показувати
   // Якщо defaultTab не заданий - показуємо обидві (backward compatibility)
   // Якщо defaultTab='columns' - тільки Columns
-  // Якщо defaultTab='filters' - тільки Filters
-  const showColumns = !defaultTab || defaultTab === 'columns';
-  const showFilters = !defaultTab || defaultTab === 'filters';
+  // Якщо defaultTab='filters' - тільки Filters; Variant B може перемкнути на Columns через "Manage Columns →"
+  const showColumns = !defaultTab || defaultTab === 'columns' || (defaultTab === 'filters' && abTest?.variant === 'B' && filtersShowColumnsPanel);
+  const showFilters = (!defaultTab || defaultTab === 'filters') && !(defaultTab === 'filters' && abTest?.variant === 'B' && filtersShowColumnsPanel);
 
   const isColumnsOnly = defaultTab === 'columns';
 
@@ -755,6 +858,16 @@ export default function ViewSettingsDialog({
           {/* Columns Section — макет: search, Currently displayed, All fields, Display density */}
           {showColumns && (
           <div className="flex flex-col gap-4 pb-4">
+            {defaultTab === 'filters' && filtersShowColumnsPanel && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start -ml-2 text-[#71717A]"
+                onClick={() => setFiltersShowColumnsPanel(false)}
+              >
+                ← Back to Filters
+              </Button>
+            )}
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#09090B]" />
@@ -792,6 +905,8 @@ export default function ViewSettingsDialog({
                             key={columnId}
                             columnId={columnId}
                             onRemove={handleRemoveColumn}
+                            isAddedViaFilter={columnsAddedViaFilter.includes(columnId)}
+                            isFilterActive={activeFilterColumnIds.includes(columnId)}
                           />
                         );
                       })}
@@ -988,6 +1103,21 @@ export default function ViewSettingsDialog({
           {/* Filters Section — макет: таби в пілюлях, Active filters (N), картки #F3E8FF, Add filter, footer */}
           {showFilters && (
           <div className="flex flex-col gap-4">
+            {abTest?.variant === 'B' && (
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-[#E4E4E7] bg-[#FAFAFA]">
+                <p className="text-xs text-[#3F3F46]">
+                  Filters are based on your current columns. Add more columns to unlock additional filters.
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="text-[#E86F25] shrink-0"
+                  onClick={() => setFiltersShowColumnsPanel(true)}
+                >
+                  Manage Columns →
+                </Button>
+              </div>
+            )}
             <Tabs
               value={filterMode}
               onValueChange={(val) => handleModeChange(val as FilterMode)}
@@ -1300,6 +1430,7 @@ export default function ViewSettingsDialog({
                       setGroupFilters(next);
                       setHasUnsavedChanges(true);
                     }}
+                    availableColumns={visibleFilterableColumns}
                   />
                 ) : (
                   <div className="space-y-4">
@@ -1412,6 +1543,7 @@ export default function ViewSettingsDialog({
                       setAdvancedFilters(next);
                       setHasUnsavedChanges(true);
                     }}
+                    availableColumns={visibleFilterableColumns}
                   />
                 ) : (
                   <div className="space-y-4">
