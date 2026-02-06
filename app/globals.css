@@ -31,6 +31,22 @@
   animation: notification-pulse 2.5s ease-in-out infinite;
 }
 
+/* Side panel (Activity) — поява справа, 250 ms */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slide-in-right {
+  animation: slide-in-right 0.25s ease-out forwards;
+}
+
 /* Floating selection bar animation */
 @keyframes fadeInUp {
   from {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreVertical, Eye, Edit, Copy, Trash2, Save, X } from 'lucide-react';
+import { MoreVertical, Eye, Edit, Copy, Trash2, Save, X, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -21,6 +21,7 @@ interface ActionsColumnProps {
   onEdit: (asset: Asset) => void;
   onDuplicate: (asset: Asset) => void;
   onDelete: (asset: Asset) => void;
+  onViewActivity?: (asset: Asset) => void;
   onSave?: () => void;
   onCancel?: () => void;
 }
@@ -48,6 +49,7 @@ export function ActionsColumnCell({
   onEdit,
   onDuplicate,
   onDelete,
+  onViewActivity,
   onSave,
   onCancel,
 }: ActionsColumnProps) {
@@ -155,6 +157,19 @@ export function ActionsColumnCell({
                   <Copy className="mr-2 h-4 w-4" />
                   Duplicate
                 </DropdownMenuItem>
+                {onViewActivity && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onViewActivity(asset);
+                      setDropdownOpen(false);
+                    }}
+                  >
+                    <History className="mr-2 h-4 w-4" />
+                    View Activity
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={(e) => {

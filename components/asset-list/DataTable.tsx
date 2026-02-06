@@ -141,6 +141,7 @@ interface DataTableProps {
   onStartEditing?: (assetId: string) => void; // НОВИЙ: для bulk edit з FloatingSelectionBar
   onDuplicate?: (asset: Asset) => void; // НОВИЙ: для duplicate action
   onDelete?: (asset: Asset) => void; // НОВИЙ: для delete action
+  onViewActivity?: (asset: Asset) => void; // Per-asset Activity side panel
   loading?: boolean;
   /** Variant A: колонки, щойно додані через filter notification — показувати highlight на заголовку */
   highlightedColumnIds?: string[];
@@ -158,6 +159,7 @@ export default function DataTable({
   onStartEditing,
   onDuplicate,
   onDelete,
+  onViewActivity,
   loading = false,
   highlightedColumnIds = [],
 }: DataTableProps) {
@@ -1114,6 +1116,7 @@ export default function DataTable({
                   onEdit={onUpdateAsset ? () => startEditing(asset) : handleEdit}
                   onDuplicate={handleDuplicate}
                   onDelete={handleDelete}
+                  onViewActivity={onViewActivity}
                   onSave={isEditing && onUpdateAsset ? handleSaveAll : undefined}
                   onCancel={isEditing ? cancelEditing : undefined}
                 />

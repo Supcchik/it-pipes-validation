@@ -10,15 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { MessageCircle } from 'lucide-react';
 import CoreVisionLogo from '@/components/CoreVisionLogo';
-import { useABTestOptional } from '@/lib/contexts/ab-test-context';
-import { cn } from '@/lib/utils';
 
 interface HeaderProps {
   projectName: string;
@@ -40,7 +33,6 @@ export default function Header({
   userInitials = 'IS',
 }: HeaderProps) {
   const pathname = usePathname();
-  const abTest = useABTestOptional();
 
   const projects = [
     { id: 'citytestqa', name: 'CityTestQA' },
@@ -84,54 +76,6 @@ export default function Header({
           })}
         </nav>
       </div>
-
-      {/* A/B тестування Columns–Filters (службовий елемент, не частина продукту) */}
-      {abTest && (
-        <div className="flex flex-col items-center gap-0.5 mr-2 px-2 py-1 rounded-md border border-[#8B5CF6] bg-[#F5F3FF]">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[10px] text-[#6D28D9] font-medium leading-tight">
-                  UX Testing Mode
-                </span>
-                <div
-                  className="flex rounded-md border border-[#8B5CF6] bg-white p-0.5 shadow-sm"
-                  role="group"
-                  aria-label="A/B variant"
-                >
-                  <button
-                    type="button"
-                    onClick={() => abTest.setVariant('A')}
-                    className={cn(
-                      'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                      abTest.variant === 'A'
-                        ? 'bg-[#8B5CF6] text-white'
-                        : 'text-[#6D28D9] hover:bg-[#EDE9FE]'
-                    )}
-                  >
-                    Variant A
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => abTest.setVariant('B')}
-                    className={cn(
-                      'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                      abTest.variant === 'B'
-                        ? 'bg-[#8B5CF6] text-white'
-                        : 'text-[#6D28D9] hover:bg-[#EDE9FE]'
-                    )}
-                  >
-                    Variant B
-                  </button>
-                </div>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-[220px]">
-              UX Testing Mode — not part of the product
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      )}
 
       {/* Права частина: селектор проєкту, Chat Support, аватар */}
       <div className="flex items-center gap-4">

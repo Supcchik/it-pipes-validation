@@ -29,6 +29,7 @@ import MoveToProjectDialog from '@/components/asset-list/MoveToProjectDialog';
 import CopyToProjectDialog from '@/components/asset-list/CopyToProjectDialog';
 import DeleteConfirmDialog from '@/components/asset-list/DeleteConfirmDialog';
 import RemoveFilterConfirmDialog from '@/components/asset-list/RemoveFilterConfirmDialog';
+import AssetActivityPanel from '@/components/activity/AssetActivityPanel';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
@@ -122,6 +123,7 @@ function AssetListPageContent(): React.JSX.Element {
   const [simpleSearchResults, setSimpleSearchResults] = useState<Asset[] | null>(null); // НОВИЙ: null = no search, [] = no results, [assets] = results
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [selectedAssetForSnapshots, setSelectedAssetForSnapshots] = useState<Asset | null>(null);
+  const [activityPanelAssetId, setActivityPanelAssetId] = useState<string | null>(null);
   const [highlightedSnapshotId, setHighlightedSnapshotId] = useState<string | null>(null);
   const [temporaryFilters, setTemporaryFilters] = useState<FilterConfig[]>([]); // Temporary filters (not saved in view)
   const [currentPage, setCurrentPage] = useState(1);
@@ -1442,6 +1444,7 @@ function AssetListPageContent(): React.JSX.Element {
                   onUpdateAsset={handleUpdateAsset}
                   onDuplicate={handleDuplicate}
                   onDelete={handleDelete}
+                  onViewActivity={(asset) => setActivityPanelAssetId(asset.pipeSegment ?? asset.id)}
                   highlightedColumnIds={highlightedColumnIds}
                 />
               </div>
@@ -1569,6 +1572,15 @@ function AssetListPageContent(): React.JSX.Element {
                     }}
                   />
                       </div>
+                    </div>
+                  )}
+                  {/* Per-asset Activity side panel — справа поверх мапи */}
+                  {activityPanelAssetId && (
+                    <div className="absolute right-0 top-0 bottom-0 z-20 flex">
+                      <AssetActivityPanel
+                        assetId={activityPanelAssetId}
+                        onClose={() => setActivityPanelAssetId(null)}
+                      />
                     </div>
                   )}
                 </div>

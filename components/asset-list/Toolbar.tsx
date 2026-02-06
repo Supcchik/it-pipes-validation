@@ -29,6 +29,8 @@ import {
   FolderOutput
 } from 'lucide-react';
 import type { FilterConfig, Asset, AssetType } from '@/lib/types/asset-list';
+import { useABTestOptional } from '@/lib/contexts/ab-test-context';
+import { cn } from '@/lib/utils';
 import SearchBar from './SearchBar';
 import AssetTypeSelector from './AssetTypeSelector';
 
@@ -81,6 +83,7 @@ export default function Toolbar({
   onAssetTypesChange,
   assetTypeLoading = false
 }: ToolbarProps) {
+  const abTest = useABTestOptional();
   const activeFiltersCount = filters.length;
   const toolbarButtonClass =
     'h-10 px-4 py-2 rounded-lg gap-2 text-[#312C29] text-sm font-medium hover:bg-neutral-100';
@@ -235,6 +238,68 @@ export default function Toolbar({
               <p>More tools</p>
             </TooltipContent>
           </Tooltip>
+          {abTest && (
+            <>
+              <div className={dividerClass} />
+              <div
+                className="flex items-center h-10 gap-0 rounded-lg border border-[#8B5CF6] overflow-hidden"
+                role="group"
+                aria-label="UX Testing Mode"
+              >
+                <div className="flex items-center h-full px-3 bg-white shrink-0">
+                  <span className="text-xs text-[#6D28D9] font-medium">
+                    UX Testing Mode
+                  </span>
+                </div>
+                <div className="flex h-full border-l border-[#8B5CF6]">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => abTest.setVariant('A')}
+                        className={cn(
+                          'h-full px-3 text-xs font-medium transition-colors',
+                          abTest.variant === 'A'
+                            ? 'bg-[#8B5CF6] text-white'
+                            : 'bg-[#F5F3FF] text-[#6D28D9] hover:bg-[#EDE9FE]'
+                        )}
+                      >
+                        Variant A
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[260px]">
+                      <p className="font-medium text-[#18181B]">Variant A — Smart Auto-Add</p>
+                      <p className="text-xs text-[#71717A] mt-0.5">
+                        Filters show all fields. Filtering by a hidden column shows a notification to add it; you can add the column with highlight or keep it hidden.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => abTest.setVariant('B')}
+                        className={cn(
+                          'h-full px-3 text-xs font-medium transition-colors',
+                          abTest.variant === 'B'
+                            ? 'bg-[#8B5CF6] text-white'
+                            : 'bg-[#F5F3FF] text-[#6D28D9] hover:bg-[#EDE9FE]'
+                        )}
+                      >
+                        Variant B
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[260px]">
+                      <p className="font-medium text-[#18181B]">Variant B — Context-Aware Filters</p>
+                      <p className="text-xs text-[#71717A] mt-0.5">
+                        Filters only show visible columns. Add columns in Manage Columns to unlock more filters; hiding a column with an active filter removes that filter.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Права частина: Pop-out Map */}
