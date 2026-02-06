@@ -53,6 +53,7 @@ import {
 } from '@/lib/utils/filter-utils';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useABTestOptional } from '@/lib/contexts/ab-test-context';
+import { useDisplayDensityOptional } from '@/lib/contexts/display-density-context';
 import { cn } from '@/lib/utils';
 import FilterGroupsEditor from './FilterGroupsEditor';
 import AdvancedFiltersEditor from './AdvancedFiltersEditor';
@@ -98,6 +99,9 @@ interface ViewSettingsDialogProps {
   defaultTab?: 'columns' | 'filters'; // НОВИЙ: Встановити початкову вкладку
   /** Variant A: колонки, додані через filter notification — показувати індикатор "added via filter" */
   columnsAddedViaFilter?: string[];
+  /** Щільність рядків таблиці: comfortable = 72px, compact = 44px */
+  displayDensity?: 'compact' | 'comfortable';
+  onDisplayDensityChange?: (density: 'compact' | 'comfortable') => void;
 }
 
 export default function ViewSettingsDialog({
@@ -108,8 +112,11 @@ export default function ViewSettingsDialog({
   assets = [],
   defaultTab = 'columns', // Значення за замовчуванням для backward compatibility
   columnsAddedViaFilter = [],
+  displayDensity: displayDensityProp = 'comfortable',
+  onDisplayDensityChange,
 }: ViewSettingsDialogProps) {
   const abTest = useABTestOptional();
+  const displayDensityCtx = useDisplayDensityOptional();
   const [filtersShowColumnsPanel, setFiltersShowColumnsPanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [displayedColumns, setDisplayedColumns] = useState<string[]>(
@@ -130,8 +137,16 @@ export default function ViewSettingsDialog({
   const [hintDismissed, setHintDismissed] = useState(false);
   // Відстеження незбережених змін для попередження при перемиканні табів
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  // Щільність відображення таблиці (Compact / Comfortable)
-  const [displayDensity, setDisplayDensity] = useState<'compact' | 'comfortable'>('comfortable');
+  // Щільність відображення таблиці: контекст > пропси > локальний стан
+  const [displayDensityLocal, setDisplayDensityLocal] = useState<'compact' | 'comfortable'>('comfortable');
+  const displayDensity = displayDensityCtx
+    ? displayDensityCtx.displayDensity
+    : onDisplayDensityChange
+      ? displayDensityProp
+      : displayDensityLocal;
+  const setDisplayDensity = displayDensityCtx
+    ? displayDensityCtx.setDisplayDensity
+    : onDisplayDensityChange ?? setDisplayDensityLocal;
   // Згортання секцій у табі Saved Filters
   const [savedFilterSetsOpen, setSavedFilterSetsOpen] = useState(true);
   const [savedAdvancedOpen, setSavedAdvancedOpen] = useState(true);

@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MoreVertical, Eye, Edit, Copy, Trash2, ArrowUpDown, GripVertical, Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useDisplayDensityOptional } from '@/lib/contexts/display-density-context';
 import type { Asset, ColumnDef, AssetType } from '@/lib/types/asset-list';
 import { isFilterApplicable } from '@/lib/utils/asset-type-utils';
 import { ActionsColumnHeader, ActionsColumnCell } from './ActionsColumn';
@@ -80,7 +81,7 @@ function SortableColumnHeader({
       scope="col"
       aria-label={column.label}
       className={cn(
-        'px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[#4D505A] bg-[#FAFAFA] border-b border-[#E4E4E7] transition-colors duration-300',
+        'h-full px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[#4D505A] bg-[#FAFAFA] border-b border-[#E4E4E7] transition-colors duration-300',
         isPipeSegment && 'sticky left-12 z-20 min-w-[10rem]',
         column.sortable && 'cursor-pointer hover:bg-neutral-100 group',
         isHighlighted && 'bg-amber-100 ring-1 ring-amber-300 ring-inset'
@@ -145,6 +146,8 @@ interface DataTableProps {
   loading?: boolean;
   /** Variant A: колонки, щойно додані через filter notification — показувати highlight на заголовку */
   highlightedColumnIds?: string[];
+  /** Щільність рядків: comfortable = 72px, compact = 44px (хедер завжди 52px) */
+  displayDensity?: 'compact' | 'comfortable';
 }
 
 export default function DataTable({
@@ -162,8 +165,11 @@ export default function DataTable({
   onViewActivity,
   loading = false,
   highlightedColumnIds = [],
+  displayDensity: displayDensityProp = 'comfortable',
 }: DataTableProps) {
   const router = useRouter();
+  const displayDensityCtx = useDisplayDensityOptional();
+  const displayDensity = displayDensityCtx?.displayDensity ?? displayDensityProp;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollSourceRef = useRef<HTMLElement | null>(null); // елемент, на якому слухаємо scroll
   const [scrollShadows, setScrollShadows] = useState({ left: false, right: false });
@@ -724,9 +730,9 @@ export default function DataTable({
 
   // Render header row content
   const headerRowContent = (
-    <TableRow>
+    <TableRow className="h-[52px]">
       {/* Checkbox column - sticky left */}
-      <TableHead className="w-12 sticky left-0 z-20 px-4 py-4 bg-[#FAFAFA] border-b border-[#E4E4E7]" scope="col">
+      <TableHead className="w-12 h-full sticky left-0 z-20 px-4 py-4 bg-[#FAFAFA] border-b border-[#E4E4E7]" scope="col">
         <Checkbox
           checked={allSelected}
           onCheckedChange={handleSelectAll}
@@ -785,7 +791,8 @@ export default function DataTable({
                 aria-selected={isSelected}
                 aria-label={`Asset ${asset.pipeSegment || asset.id}`}
                 className={cn(
-                  'min-h-[72px] border-b border-[#E4E4E7] transition-colors',
+                  displayDensity === 'comfortable' ? 'min-h-[72px]' : 'h-[44px]',
+                  'border-b border-[#E4E4E7] transition-colors',
                   isFullRowEdit
                     ? 'bg-yellow-50 border-yellow-300 border-2'
                     : isEditing
@@ -804,7 +811,13 @@ export default function DataTable({
                 }}
               >
                 {/* Checkbox / Edit indicator - sticky left */}
-                <TableCell className="w-12 sticky left-0 z-20 p-4 bg-white" onClick={(e) => e.stopPropagation()}>
+                <TableCell
+                  className={cn(
+                    'w-12 sticky left-0 z-20 bg-white',
+                    displayDensity === 'comfortable' ? 'min-h-[72px] p-4' : 'h-[44px] py-2 px-4'
+                  )}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {!isEditing ? (
                     <Checkbox
                       checked={isSelected}
@@ -849,7 +862,8 @@ export default function DataTable({
                     <TableCell
                       key={column.id}
                       className={cn(
-                        'p-4 text-sm font-medium text-[#09090B] bg-white align-middle',
+                        'text-sm font-medium text-[#09090B] bg-white align-middle',
+                        displayDensity === 'comfortable' ? 'min-h-[72px] p-4' : 'h-[44px] py-2 px-4',
                         isPipeSegmentCol && 'sticky left-12 z-20 min-w-[10rem] bg-white'
                       )}
                       style={scrollShadows.left && isPipeSegmentCol ? { boxShadow: STICKY_SHADOW_RIGHT } : undefined}
@@ -1110,6 +1124,7 @@ export default function DataTable({
                 {/* Actions - sticky right */}
                 <ActionsColumnCell
                   showShadowLeft={scrollShadows.right}
+                  displayDensity={displayDensity}
                   asset={asset}
                   isEditing={isEditing}
                   onViewDetails={handleViewDetails}

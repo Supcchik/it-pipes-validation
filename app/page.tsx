@@ -42,6 +42,7 @@ import type { ReportConfig } from '@/lib/utils/pdf-generator';
 import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl, formatActiveTypes, areAllTypesSelected } from '@/lib/utils/asset-type-utils';
 import { getColumnsByType, getAllColumnsForTypes } from '@/lib/utils/column-schemas';
 import { ABTestProvider, useABTest } from '@/lib/contexts/ab-test-context';
+import { DisplayDensityProvider } from '@/lib/contexts/display-density-context';
 import FilterColumnMismatchNotification, { type FilterColumnMismatchItem } from '@/components/asset-list/FilterColumnMismatchNotification';
 
 function AssetListPageContent(): React.JSX.Element {
@@ -1411,7 +1412,7 @@ function AssetListPageContent(): React.JSX.Element {
         />
       </div>
 
-      <div className="flex-1 overflow-hidden p-4 relative">
+      <div className="flex-1 overflow-hidden px-4 py-0 relative">
         {isLoadingView && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-lg p-6 flex items-center gap-3">
@@ -1896,9 +1897,11 @@ function AssetListPageContent(): React.JSX.Element {
 export default function AssetListPage() {
   return (
     <ABTestProvider>
-      <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
-        <AssetListPageContent />
-      </Suspense>
+      <DisplayDensityProvider>
+        <Suspense fallback={<div className="flex items-center justify-center h-screen">Loading...</div>}>
+          <AssetListPageContent />
+        </Suspense>
+      </DisplayDensityProvider>
     </ABTestProvider>
   );
 }

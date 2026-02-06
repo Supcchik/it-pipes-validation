@@ -11,12 +11,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { TableCell, TableHead } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import type { Asset } from '@/lib/types/asset-list';
 
 interface ActionsColumnProps {
   asset: Asset;
   isEditing?: boolean;
   showShadowLeft?: boolean;
+  /** Щільність рядків: comfortable = 72px, compact = 44px */
+  displayDensity?: 'compact' | 'comfortable';
   onViewDetails: (asset: Asset) => void;
   onEdit: (asset: Asset) => void;
   onDuplicate: (asset: Asset) => void;
@@ -31,12 +34,12 @@ const STICKY_SHADOW_LEFT = '-4px 0 29px 0 rgba(100, 100, 111, 0.2)';
 export function ActionsColumnHeader({ showShadowLeft = false }: { showShadowLeft?: boolean }) {
   return (
     <TableHead
-      className="sticky right-0 z-20 w-[90px] px-4 py-4 bg-[#FAFAFA] border-b border-[#E4E4E7] border-l border-[#E4E4E7]"
+      className="sticky right-0 z-20 w-[90px] h-full px-4 py-4 bg-[#FAFAFA] border-b border-[#E4E4E7] border-l border-[#E4E4E7]"
       style={showShadowLeft ? { boxShadow: STICKY_SHADOW_LEFT } : undefined}
       scope="col"
       aria-label="Actions"
     >
-      <div className="w-full h-full min-h-[51px]" />
+      <div className="w-full h-full" />
     </TableHead>
   );
 }
@@ -45,6 +48,7 @@ export function ActionsColumnCell({
   asset,
   isEditing = false,
   showShadowLeft = false,
+  displayDensity = 'comfortable',
   onViewDetails,
   onEdit,
   onDuplicate,
@@ -54,10 +58,11 @@ export function ActionsColumnCell({
   onCancel,
 }: ActionsColumnProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const cellHeight = displayDensity === 'comfortable' ? 'min-h-[72px] p-4' : 'h-[44px] py-2 px-4';
 
   return (
     <TableCell
-      className="sticky right-0 z-10 w-[90px] p-4 min-h-[72px] bg-white border-l border-[#E4E4E7]"
+      className={cn('sticky right-0 z-10 w-[90px] bg-white border-l border-[#E4E4E7]', cellHeight)}
       style={showShadowLeft ? { boxShadow: STICKY_SHADOW_LEFT } : undefined}
       onClick={(e) => e.stopPropagation()}
     >
