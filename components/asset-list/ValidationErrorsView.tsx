@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import * as React from 'react';
-import { Download, Search, Edit } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -13,12 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 export interface ValidationError {
   assetId: string;
   assetName: string;
   inspectionId: string;
   inspectionDate: string;
+  /** Вулиця для колонки STREET (опційно). */
+  street?: string;
   errors: Array<{
     type: 'missing' | 'invalid' | 'warning';
     field: string;
@@ -27,183 +29,301 @@ export interface ValidationError {
   }>;
 }
 
+/** Один фікс: inspection + поле + нове значення. */
+export interface ValidationErrorFix {
+  assetId: string;
+  field: string;
+  value: string;
+}
+
 interface ValidationErrorsViewProps {
   errors: ValidationError[];
-  onBulkFix: (selectedErrors: ValidationError[]) => void;
+  onClose: () => void;
+  /** Зберегти внесені зміни (inline edits). Після виклику батько показує toast і закриває або оновлює список. */
+  onApplyFixes: (fixes: ValidationErrorFix[]) => void;
   onExport: () => void;
 }
 
+const MOCK_USERS = ['User A', 'User B', 'User C'];
+
+/** Поля, які можна редагувати в таблиці помилок. */
+type EditableField = 'certificateNumber' | 'surveyedBy' | 'inspectionDate' | 'pacpCode';
+
+/** Локальні правки по рядках. */
+type EditsMap = Record<string, Partial<Record<EditableField, string>>>;
+
 export default function ValidationErrorsView({
   errors,
-  onBulkFix,
+  onClose,
+  onApplyFixes,
   onExport
 }: ValidationErrorsViewProps) {
-  const [selectedErrors, setSelectedErrors] = useState<Set<string>>(new Set());
-  const [expandedErrors, setExpandedErrors] = useState<Set<string>>(new Set());
   const [filterType, setFilterType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [edits, setEdits] = useState<EditsMap>({});
 
-  const toggleExpand = (assetId: string) => {
-    const newExpanded = new Set(expandedErrors);
-    if (newExpanded.has(assetId)) {
-      newExpanded.delete(assetId);
-    } else {
-      newExpanded.add(assetId);
+  const editableFields: EditableField[] = ['certificateNumber', 'surveyedBy', 'inspectionDate', 'pacpCode'];
+  const hasEdits = Object.entries(edits).some(([, v]) =>
+    editableFields.some((f) => (v[f]?.trim() ?? '') !== '')
+  );
+
+  const setEdit = (assetId: string, field: EditableField, value: string) => {
+    setEdits(prev => {
+      const next = { ...prev };
+      if (!next[assetId]) next[assetId] = {};
+      next[assetId] = { ...next[assetId], [field]: value };
+      return next;
+    });
+  };
+
+  const getEdit = (assetId: string, field: EditableField): string => {
+    return edits[assetId]?.[field] ?? '';
+  };
+
+  const handleApplyFixes = () => {
+    const fixes: ValidationErrorFix[] = [];
+    Object.entries(edits).forEach(([assetId, v]) => {
+      editableFields.forEach((field) => {
+        const val = v[field]?.trim();
+        if (val !== undefined && val !== '') {
+          fixes.push({ assetId, field, value: val });
+        }
+      });
+    });
+    if (fixes.length === 0) return;
+    onApplyFixes(fixes);
+  };
+
+  const filteredErrors = React.useMemo(() => {
+    let list = errors;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        e =>
+          e.assetName.toLowerCase().includes(q) ||
+          e.inspectionId.toLowerCase().includes(q) ||
+          (e.street ?? '').toLowerCase().includes(q)
+      );
     }
-    setExpandedErrors(newExpanded);
-  };
-
-  const toggleSelect = (assetId: string) => {
-    const newSelected = new Set(selectedErrors);
-    if (newSelected.has(assetId)) {
-      newSelected.delete(assetId);
-    } else {
-      newSelected.add(assetId);
+    if (filterType !== 'all') {
+      list = list.filter(e => e.errors.some(err => err.type === filterType));
     }
-    setSelectedErrors(newSelected);
-  };
+    return list;
+  }, [errors, searchQuery, filterType]);
 
-  const toggleSelectAll = () => {
-    if (selectedErrors.size === errors.length) {
-      setSelectedErrors(new Set());
-    } else {
-      setSelectedErrors(new Set(errors.map(e => e.assetId)));
-    }
+  // Додаткові колонки з полів помилок (окрім surveyedBy, certificateNumber — вони вже є)
+  const FIELD_LABELS: Record<string, string> = {
+    inspectionDate: 'Inspection date',
+    pacpCode: 'PACP code',
   };
-
-  const handleBulkFix = () => {
-    if (selectedErrors.size === 0) return;
-    const selected = errors.filter(e => selectedErrors.has(e.assetId));
-    onBulkFix(selected);
-  };
+  const extraColumns = React.useMemo(() => {
+    const seen = new Set<string>();
+    errors.forEach((e) => {
+      e.errors.forEach((err) => {
+        if (err.field !== 'surveyedBy' && err.field !== 'certificateNumber' && FIELD_LABELS[err.field]) {
+          seen.add(err.field);
+        }
+      });
+    });
+    return Array.from(seen).map((key) => ({ key, label: FIELD_LABELS[key] ?? key }));
+  }, [errors]);
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="border-b border-neutral-200 p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">
-            Validation Errors ({errors.length} inspections)
-          </h2>
-          <Button variant="outline" size="sm" onClick={onExport}>
-            <Download className="w-4 h-4 mr-2" />
-            Export CSV
+    <div className="flex flex-col h-full w-full min-w-0 p-6 gap-4 rounded-2xl border border-[#E4E4E7] overflow-hidden shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)]">
+      {/* Title */}
+      <h2 className="text-[#09090B] text-lg font-semibold leading-7 shrink-0">
+        Validation Errors ({errors.length} inspections)
+      </h2>
+
+      <div className="flex flex-col gap-3 flex-1 min-h-0">
+        {/* Toolbar: filter + search (left), Export errors (right) */}
+        <div className="h-14 border-b border-[#E4E4E7] flex justify-between items-center gap-4 shrink-0">
+          <div className="flex items-center gap-4">
+            <Select value={filterType} onValueChange={setFilterType}>
+              <SelectTrigger className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] font-medium w-[140px]">
+                <SelectValue placeholder="All errors" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All errors</SelectItem>
+                <SelectItem value="missing">Missing Fields</SelectItem>
+                <SelectItem value="invalid">Invalid Codes</SelectItem>
+                <SelectItem value="warning">Warnings</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="w-px h-6 bg-[#D4D4D8]" />
+            <div className="relative w-full max-w-[360px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#71717A]" />
+              <Input
+                placeholder="Search inspections"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-9 pl-10 rounded-md border-[#E4E4E7] bg-white text-[#18181B] placeholder:text-[#71717A]"
+              />
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            onClick={onExport}
+            className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] font-medium shrink-0"
+          >
+            Export errors
           </Button>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-2">
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Errors</SelectItem>
-              <SelectItem value="missing">Missing Fields</SelectItem>
-              <SelectItem value="invalid">Invalid Codes</SelectItem>
-              <SelectItem value="warning">Warnings</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
-            <Input
-              placeholder="Search assets..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
+        {/* Table: Pipe Segment (sticky) | middle cols | Notes (sticky); горизонтальний скрол */}
+        <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-[#E4E4E7]">
+          <table
+            className="border-collapse"
+            style={{ minWidth: 140 + 180 + 160 + 160 + extraColumns.length * 140 + 240 }}
+          >
+            <thead className="sticky top-0 z-10 bg-[#FAFAFA] border-b border-[#E4E4E7]">
+              <tr>
+                <th className="sticky left-0 z-20 w-[140px] min-w-[140px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#4D505A] leading-5 bg-[#FAFAFA] border-r border-[#E4E4E7]">
+                  Pipe Segment
+                </th>
+                <th className="w-[180px] min-w-[180px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#4D505A] leading-5">
+                  Street
+                </th>
+                <th className="w-[160px] min-w-[160px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#4D505A] leading-5">
+                  Certificate Number
+                </th>
+                <th className="w-[160px] min-w-[160px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#4D505A] leading-5">
+                  Surveyed by
+                </th>
+                {extraColumns.map((col) => (
+                  <th
+                    key={col.key}
+                    className="w-[140px] min-w-[140px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#4D505A] leading-5"
+                  >
+                    {col.label}
+                  </th>
+                ))}
+                <th className="sticky right-0 z-20 w-[240px] min-w-[240px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#4D505A] leading-5 bg-[#FAFAFA] border-l border-[#E4E4E7]">
+                  Notes
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredErrors.map((error) => (
+                <tr
+                  key={error.assetId}
+                  className="border-b border-[#E4E4E7] bg-white hover:bg-neutral-50/50 min-h-[72px]"
+                >
+                  <td className="sticky left-0 z-20 px-4 py-4 align-middle bg-white border-r border-[#E4E4E7] [tr:hover_&]:bg-neutral-50/50">
+                    <button
+                      type="button"
+                      className="text-[#446CEE] hover:underline font-medium text-sm leading-5 text-left"
+                      onClick={() => {}}
+                    >
+                      {error.assetName}
+                    </button>
+                  </td>
+                  <td className="px-4 py-4 align-middle text-sm font-medium leading-5 text-[#18181B]">
+                    {error.street ?? '—'}
+                  </td>
+                  <td className="px-4 py-4 align-middle">
+                    <Input
+                      placeholder="Enter value"
+                      value={getEdit(error.assetId, 'certificateNumber')}
+                      onChange={(e) => setEdit(error.assetId, 'certificateNumber', e.target.value)}
+                      className={cn(
+                        'h-9 min-w-[120px] px-2 rounded border-0 bg-transparent text-sm font-medium leading-5',
+                        getEdit(error.assetId, 'certificateNumber')
+                          ? 'text-[#09090B]'
+                          : 'text-[#4D505A] placeholder:text-[#4D505A]'
+                      )}
+                    />
+                  </td>
+                  <td className="px-4 py-4 align-middle">
+                    <Select
+                      value={getEdit(error.assetId, 'surveyedBy') || '__placeholder__'}
+                      onValueChange={(v) => setEdit(error.assetId, 'surveyedBy', v === '__placeholder__' ? '' : v)}
+                    >
+                      <SelectTrigger
+                        className={cn(
+                          'h-9 w-full rounded border-0 bg-transparent text-sm font-medium leading-5 [&>span]:font-medium',
+                          !getEdit(error.assetId, 'surveyedBy')
+                            ? 'text-[#4D505A]'
+                            : 'text-[#09090B]'
+                        )}
+                      >
+                        <SelectValue placeholder="Select user" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__placeholder__">Select user</SelectItem>
+                        {MOCK_USERS.map((u) => (
+                          <SelectItem key={u} value={u}>
+                            {u}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  {extraColumns.map((col) => {
+                    const err = error.errors.find((e) => e.field === col.key);
+                    const isEditable = col.key === 'inspectionDate' || col.key === 'pacpCode';
+                    if (isEditable) {
+                      const value = getEdit(error.assetId, col.key as EditableField);
+                      return (
+                        <td key={col.key} className="px-4 py-4 align-middle">
+                          <Input
+                            type={col.key === 'inspectionDate' ? 'date' : 'text'}
+                            placeholder={col.key === 'pacpCode' ? 'Enter PACP code' : undefined}
+                            value={value}
+                            onChange={(e) =>
+                              setEdit(error.assetId, col.key as EditableField, e.target.value)
+                            }
+                            className={cn(
+                              'h-9 min-w-[120px] px-2 rounded border border-[#E4E4E7] text-sm font-medium leading-5',
+                              value ? 'text-[#09090B]' : 'text-[#4D505A] placeholder:text-[#4D505A]'
+                            )}
+                          />
+                        </td>
+                      );
+                    }
+                    return (
+                      <td key={col.key} className="px-4 py-4 align-middle text-sm font-medium leading-5 text-[#B45309]">
+                        {err ? err.message : '—'}
+                      </td>
+                    );
+                  })}
+                  <td className="sticky right-0 z-20 px-4 py-4 align-middle bg-white border-l border-[#E4E4E7] [tr:hover_&]:bg-neutral-50/50">
+                    <div className="flex flex-col gap-1 min-w-[200px]">
+                      {error.errors.map((err, idx) => (
+                        <span
+                          key={idx}
+                          className="text-sm font-medium leading-5 text-[#B45309]"
+                        >
+                          {err.message}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Error List */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full">
-          <thead className="sticky top-0 bg-neutral-50 border-b border-neutral-200">
-            <tr className="text-sm text-left">
-              <th className="w-12 p-3">
-                <Checkbox
-                  checked={selectedErrors.size === errors.length && errors.length > 0}
-                  onCheckedChange={toggleSelectAll}
-                />
-              </th>
-              <th className="p-3 font-medium">Asset</th>
-              <th className="p-3 font-medium">Insp ID</th>
-              <th className="p-3 font-medium">Date</th>
-              <th className="p-3 font-medium">Errors</th>
-              <th className="p-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {errors.map((error) => (
-              <React.Fragment key={error.assetId}>
-                <tr
-                  className="border-b border-neutral-200 hover:bg-neutral-50"
-                >
-                  <td className="p-3">
-                    <Checkbox
-                      checked={selectedErrors.has(error.assetId)}
-                      onCheckedChange={() => toggleSelect(error.assetId)}
-                    />
-                  </td>
-                  <td className="p-3 font-medium">{error.assetName}</td>
-                  <td className="p-3 text-neutral-600">{error.inspectionId}</td>
-                  <td className="p-3 text-neutral-600 text-sm">
-                    {error.inspectionDate}
-                  </td>
-                  <td className="p-3">
-                    <button
-                      onClick={() => toggleExpand(error.assetId)}
-                      className="text-sm text-orange-600 hover:text-orange-700 font-medium"
-                    >
-                      {error.errors.length} error{error.errors.length > 1 ? 's' : ''} ▾
-                    </button>
-                  </td>
-                  <td className="p-3">
-                    <Button variant="ghost" size="sm">
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                  </td>
-                </tr>
-
-                {/* Expanded Error Details */}
-                {expandedErrors.has(error.assetId) && (
-                  <tr className="bg-neutral-50">
-                    <td colSpan={6} className="p-4">
-                      <div className="space-y-2">
-                        {error.errors.map((err, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-start gap-2 text-sm text-neutral-700"
-                          >
-                            <span className="text-orange-600 mt-0.5">⚠️</span>
-                            <span>{err.message}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Footer Actions */}
-      <div className="border-t border-neutral-200 p-4 flex items-center gap-3">
-        <span className="text-sm text-neutral-600">
-          {selectedErrors.size} selected
-        </span>
+      {/* Footer: Close, Apply fixes (disabled opacity 0.5 when no edits) */}
+      <div className="pt-4 pb-6 px-0 border-t border-[#E4E4E7] bg-white flex justify-end gap-2 shrink-0 shadow-[0px_6px_29px_rgba(100,100,111,0.20)] -mx-6 -mb-6 px-6">
         <Button
-          onClick={handleBulkFix}
-          disabled={selectedErrors.size === 0}
+          variant="outline"
+          onClick={onClose}
+          className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] font-medium"
         >
-          Bulk Fix Selected
+          Close
         </Button>
-        <Button variant="outline" onClick={onExport}>
-          Export Errors
+        <Button
+          onClick={handleApplyFixes}
+          disabled={!hasEdits}
+          className={cn(
+            'h-10 px-4 rounded-lg bg-[#E86F25] text-[#FAFAFA] font-medium hover:bg-[#d66320]',
+            !hasEdits && 'opacity-50 cursor-not-allowed'
+          )}
+        >
+          Apply fixes
         </Button>
       </div>
     </div>

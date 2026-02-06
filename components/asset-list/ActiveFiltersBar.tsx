@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Bookmark, Filter as FilterIcon } from 'lucide-react';
+import { X, Bookmark, Filter as FilterIcon, Trash2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -24,6 +24,7 @@ interface ActiveFiltersBarProps {
   onRemoveGroupFilter?: (groupId: string) => void; // НОВИЙ: для видалення Filter Set
   onRemoveAdvancedFilter?: () => void; // НОВИЙ: для видалення Advanced фільтра
   onOpenViewSettings: () => void;
+  onClearAll?: () => void; // Очистити всі фільтри (simple + temporary)
   maxVisibleSimple?: number; // default 3
 }
 
@@ -38,6 +39,7 @@ export default function ActiveFiltersBar({
   onRemoveGroupFilter,
   onRemoveAdvancedFilter,
   onOpenViewSettings,
+  onClearAll,
   maxVisibleSimple = 3,
 }: ActiveFiltersBarProps) {
   const mode: FilterMode = filterMode || 'simple';
@@ -72,21 +74,25 @@ export default function ActiveFiltersBar({
     return column?.label || fieldId;
   };
 
-  // Форматування деталей Filter Set для tooltip
-  const formatGroupDetails = (group: GroupFilterState['groups'][0]): string => {
-    if (!group.conditions || group.conditions.length === 0) {
-      return 'No filters in this set';
+  /** Підпис оператора для відображення (читається як речення). Spec: is, contains, greater than, less than. */
+  const getOperatorLabel = (operator: FilterConfig['operator']): string => {
+    switch (operator) {
+      case 'equals':
+        return 'is';
+      case 'contains':
+        return 'contains';
+      case 'startsWith':
+        return 'starts with';
+      case 'greaterThan':
+        return 'greater than';
+      case 'lessThan':
+        return 'less than';
+      default:
+        return String(operator);
     }
-    return group.conditions
-      .map((cond) => {
-        const fieldLabel = getFieldLabel(cond.field);
-        const opSymbol = getOperatorSymbol(cond.operator);
-        return `${fieldLabel} ${opSymbol} "${String(cond.value)}"`;
-      })
-      .join(' AND ');
   };
 
-  // SIMPLE MODE: окремі chipʼи для кожної умови
+  // SIMPLE MODE: пілюлі за макетом (фон #F3E8FF, оператор #A855F7)
   if (mode === 'simple') {
     const allFilters = [
       ...simpleFilters.map((f) => ({ ...f, isFromView: true })),
@@ -99,74 +105,79 @@ export default function ActiveFiltersBar({
     const hiddenCount = Math.max(0, allFilters.length - maxVisibleSimple);
 
     return (
-      <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 border-b border-orange-200">
-        <span className="inline-flex items-center gap-1 text-sm text-neutral-700 font-medium">
-          <FilterIcon className="w-4 h-4 text-orange-500" />
-          Filters:
-        </span>
-
-        {visibleFilters.map((filter) => (
-          <Badge
-            key={filter.id}
-            variant="secondary"
-            className={
-              filter.isFromView
-                ? 'gap-2 pl-3 pr-2 py-1.5 bg-blue-50 border border-blue-200 hover:border-blue-300 transition-colors'
-                : 'gap-2 pl-3 pr-2 py-1.5 bg-white border border-neutral-200 hover:border-neutral-300 transition-colors'
-            }
-          >
-            {filter.isFromView && (
-              <Bookmark className="w-3 h-3 text-blue-600" />
-            )}
-            <span className="text-xs">
-              <span className="font-medium">{getFieldLabel(filter.field)}</span>{' '}
-              <span className="text-neutral-400">
-                {getOperatorSymbol(filter.operator)}
-              </span>{' '}
-              <span className="text-neutral-700">
-                &quot;{String(filter.value)}&quot;
-              </span>
-              {filter.isFromView && (
-                <span className="text-blue-600 ml-1" title="Saved in view">
-                  (view)
-                </span>
-              )}
-            </span>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (filter.isFromView && onRemoveSimpleFilter) {
-                  onRemoveSimpleFilter(filter.id);
-                } else {
-                  onRemoveTemporaryFilter(filter.id);
-                }
-              }}
-              className="hover:bg-neutral-100 rounded-sm p-0.5 transition-colors ml-1"
-              aria-label={`Remove filter ${filter.field}`}
+      <div className="flex items-center justify-between px-6 py-2 border-b border-[#E4E4E7] bg-white">
+        <div className="flex items-center gap-4 flex-wrap">
+          {visibleFilters.map((filter) => (
+            <div
+              key={filter.id}
+              className="h-6 px-3 py-0.5 rounded-full bg-[#F3E8FF] flex items-center justify-center gap-2"
             >
-              <X className="w-3 h-3 text-neutral-500" />
-            </button>
-          </Badge>
-        ))}
-
-        {hiddenCount > 0 && (
+              <div className="flex items-center gap-1">
+                <span className="text-[#18181B] text-xs font-medium">
+                  {getFieldLabel(filter.field)}
+                </span>
+                <span className="text-[#A855F7] text-xs font-medium">
+                  {getOperatorLabel(filter.operator)}
+                </span>
+                {filter.value !== undefined && filter.value !== '' && (
+                  <span className="text-[#18181B] text-xs font-medium">
+                    &quot;{String(filter.value)}&quot;
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (filter.isFromView && onRemoveSimpleFilter) {
+                    onRemoveSimpleFilter(filter.id);
+                  } else {
+                    onRemoveTemporaryFilter(filter.id);
+                  }
+                }}
+                className="flex items-center justify-center w-4 h-4 rounded hover:bg-[#E9D5FF] transition-colors text-[#71717A]"
+                aria-label={`Remove filter ${filter.field}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {hiddenCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onOpenViewSettings}
+              className="h-7 text-xs text-[#312C29]"
+            >
+              +{hiddenCount} more
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
-            onClick={onOpenViewSettings}
-            className="h-7 text-xs"
+            onClick={() => {
+              if (onClearAll) onClearAll();
+              else {
+                temporaryFilters.forEach((f) => onRemoveTemporaryFilter(f.id));
+                simpleFilters.forEach((f) => onRemoveSimpleFilter?.(f.id));
+              }
+            }}
+            className="px-2 py-1 rounded-lg gap-2 text-[#312C29] text-sm font-medium hover:bg-neutral-100 h-auto"
+            aria-label="Clear all filters"
           >
-            +{hiddenCount} more
+            <Trash2 className="w-4 h-4" />
+            Clear all
           </Button>
-        )}
-
+        </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={onOpenViewSettings}
-          className="ml-auto h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-100"
+          className="px-2 py-1 rounded-lg gap-2 text-[#312C29] text-sm font-medium hover:bg-neutral-100 h-auto"
+          aria-label="Edit filters"
         >
-          View all →
+          Edit
+          <ChevronDown className="w-4 h-4" />
         </Button>
       </div>
     );
@@ -177,67 +188,80 @@ export default function ActiveFiltersBar({
     const groups = groupFilters.groups;
 
     return (
-      <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 border-b border-orange-200 flex-wrap">
-        <span className="inline-flex items-center gap-1 text-sm text-neutral-700 font-medium">
-          <FilterIcon className="w-4 h-4 text-orange-500" />
-          Filter sets:
-        </span>
-
-        {groups.map((group, index) => {
-          const groupDetails = formatGroupDetails(group);
-          return (
-            <div key={group.id} className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Badge
-                    variant="secondary"
-                    className="gap-2 pl-3 pr-2 py-1.5 bg-blue-50 border border-blue-200 hover:border-blue-300 transition-colors cursor-pointer"
-                    onClick={onOpenViewSettings}
-                  >
-                    <span className="text-xs font-medium">
-                      {group.name || `Filter Set ${index + 1}`}:{' '}
-                      {group.conditions.length} filter
-                      {group.conditions.length === 1 ? '' : 's'}
-                    </span>
-                    {onRemoveGroupFilter && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveGroupFilter(group.id);
-                        }}
-                        className="hover:bg-blue-100 rounded-sm p-0.5 transition-colors ml-1"
-                        aria-label={`Remove filter set ${group.name || index + 1}`}
-                      >
-                        <X className="w-3 h-3 text-blue-600" />
-                      </button>
-                    )}
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-md">
-                  <div className="text-xs space-y-1">
-                    <div className="font-semibold mb-1">
+      <div className="flex items-center justify-between px-6 py-2 border-b border-[#E4E4E7] bg-white flex-wrap gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="inline-flex items-center gap-1 text-sm text-[#18181B] font-medium">
+            <FilterIcon className="w-4 h-4 text-[#A855F7]" />
+            Filter sets:
+          </span>
+          {groups.map((group, index) => (
+              <div key={group.id} className="flex items-center gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={onOpenViewSettings}
+                      onKeyDown={(e) => e.key === 'Enter' && onOpenViewSettings()}
+                      className="h-6 px-3 py-0.5 rounded-full bg-[#F3E8FF] flex items-center gap-2 cursor-pointer hover:bg-[#E9D5FF] transition-colors"
+                    >
+                      <span className="text-xs font-medium text-[#18181B]">
+                        {group.name || `Filter Set ${index + 1}`}:{' '}
+                        {group.conditions.length} filter
+                        {group.conditions.length === 1 ? '' : 's'}
+                      </span>
+                      {onRemoveGroupFilter && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveGroupFilter(group.id);
+                          }}
+                          className="flex items-center justify-center w-4 h-4 rounded hover:bg-[#E9D5FF] transition-colors text-[#71717A]"
+                          aria-label={`Remove filter set ${group.name || index + 1}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-md flex flex-col gap-1">
+                    <div className="text-[#18181B] text-sm font-semibold leading-5">
                       {group.name || `Filter Set ${index + 1}`}
                     </div>
-                    <div className="text-neutral-300">{groupDetails}</div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-              {index < groups.length - 1 && (
-                <span className="text-[11px] text-neutral-600 font-semibold px-1">
-                  OR
-                </span>
-              )}
-            </div>
-          );
-        })}
-
+                    <div className="flex flex-col gap-0.5">
+                      {group.conditions?.map((cond, condIndex) => (
+                        <div key={cond.id} className="text-sm font-medium leading-5 text-[#18181B]">
+                          {condIndex > 0 ? (
+                            <span className="text-[#18181B]">and {getFieldLabel(cond.field)} </span>
+                          ) : (
+                            <span className="text-[#18181B]">{getFieldLabel(cond.field)} </span>
+                          )}
+                          <span className="text-[#A855F7]">
+                            {getOperatorLabel(cond.operator)}
+                          </span>
+                          <span className="text-[#18181B]"> &quot;{String(cond.value)}&quot;</span>
+                        </div>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+                {index < groups.length - 1 && (
+                  <span className="text-[11px] text-neutral-600 font-semibold px-1">
+                    OR
+                  </span>
+                )}
+              </div>
+          ))}
+        </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={onOpenViewSettings}
-          className="ml-auto h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-100"
+          className="px-2 py-1 rounded-lg gap-2 text-[#312C29] text-sm font-medium hover:bg-neutral-100 h-auto"
         >
-          View all →
+          Edit
+          <ChevronDown className="w-4 h-4" />
         </Button>
       </div>
     );
@@ -252,51 +276,55 @@ export default function ActiveFiltersBar({
     const preview = buildAdvancedFilterPreview(advancedFilters);
 
     return (
-      <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 border-b border-orange-200">
-        <span className="inline-flex items-center gap-1 text-sm text-neutral-700 font-medium">
-          <FilterIcon className="w-4 h-4 text-orange-500" />
-          Advanced filter:
-        </span>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge
-              variant="secondary"
-              className="gap-2 pl-3 pr-2 py-1.5 bg-purple-50 border border-purple-200 hover:border-purple-300 transition-colors cursor-pointer max-w-[320px] truncate"
-              onClick={onOpenViewSettings}
-            >
-              <span className="text-xs font-medium text-purple-900 truncate">
-                Complex filter: {totalConditions} condition
-                {totalConditions === 1 ? '' : 's'}
-              </span>
-              {onRemoveAdvancedFilter && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveAdvancedFilter();
-                  }}
-                  className="hover:bg-purple-100 rounded-sm p-0.5 transition-colors ml-1"
-                  aria-label="Remove advanced filter"
-                >
-                  <X className="w-3 h-3 text-purple-600" />
-                </button>
-              )}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-lg">
-            <pre className="text-xs whitespace-pre-wrap text-neutral-100">
-              {preview}
-            </pre>
-          </TooltipContent>
-        </Tooltip>
-
+      <div className="flex items-center justify-between px-6 py-2 border-b border-[#E4E4E7] bg-white">
+        <div className="flex items-center gap-4">
+          <span className="inline-flex items-center gap-1 text-sm text-[#18181B] font-medium">
+            <FilterIcon className="w-4 h-4 text-[#A855F7]" />
+            Advanced filter:
+          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={onOpenViewSettings}
+                onKeyDown={(e) => e.key === 'Enter' && onOpenViewSettings()}
+                className="h-6 px-3 py-0.5 rounded-full bg-[#F3E8FF] flex items-center gap-2 cursor-pointer hover:bg-[#E9D5FF] transition-colors max-w-[320px] truncate"
+              >
+                <span className="text-xs font-medium text-[#18181B] truncate">
+                  Complex filter: {totalConditions} condition
+                  {totalConditions === 1 ? '' : 's'}
+                </span>
+                {onRemoveAdvancedFilter && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveAdvancedFilter();
+                    }}
+                    className="flex items-center justify-center w-4 h-4 rounded hover:bg-[#E9D5FF] transition-colors text-[#71717A] shrink-0"
+                    aria-label="Remove advanced filter"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-lg">
+              <pre className="text-xs whitespace-pre-wrap text-neutral-100">
+                {preview}
+              </pre>
+            </TooltipContent>
+          </Tooltip>
+        </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={onOpenViewSettings}
-          className="ml-auto h-7 text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-100"
+          className="px-2 py-1 rounded-lg gap-2 text-[#312C29] text-sm font-medium hover:bg-neutral-100 h-auto"
         >
-          Edit →
+          Edit
+          <ChevronDown className="w-4 h-4" />
         </Button>
       </div>
     );

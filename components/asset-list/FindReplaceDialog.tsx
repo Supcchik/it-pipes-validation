@@ -1,18 +1,13 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, RefreshCw } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
   Select,
   SelectContent,
@@ -20,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import type { Asset, ColumnDef } from '@/lib/types/asset-list';
 
 export interface ReplaceOperation {
@@ -99,164 +94,148 @@ export default function FindReplaceDialog({
   };
 
   // Get editable columns (exclude IDs, computed fields, non-asset fields)
-  const editableColumns = columns.filter(col => 
+  const editableColumns = columns.filter(col =>
     col.table === 'asset' &&
-    col.field !== 'id' && 
-    col.field !== 'pipeSegment' && // Key field
-    col.type !== 'date' // Dates need special handling
+    col.field !== 'id' &&
+    col.field !== 'pipeSegment' &&
+    col.type !== 'date'
   );
 
-  const selectedColumn = columns.find(col => col.field === field);
+  const viewCount = (filteredAssets || assets).length;
+  const canReplace = matchedAssets.length > 0 && !!replaceValue;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Find & Replace</DialogTitle>
-        </DialogHeader>
+      <DialogContent
+        className="max-w-4xl w-full min-w-[680px] p-6 gap-4 rounded-2xl border border-[#E4E4E7] shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)] overflow-hidden flex flex-col"
+        style={{ fontFamily: 'Montserrat, sans-serif' }}
+      >
+        <DialogTitle className="text-[18px] font-semibold leading-7 text-[#09090B] m-0">
+          Find & Replace
+        </DialogTitle>
 
-        <div className="space-y-4 py-4">
-          {/* Find Section */}
-          <div className="space-y-3">
-            <Label className="text-base font-semibold">Find</Label>
-            
-            <div className="flex items-center gap-2">
-              {/* Field Selector */}
-              <Select value={field} onValueChange={setField}>
-                <SelectTrigger className="w-56">
-                  <SelectValue placeholder="Select field..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {editableColumns.map(col => (
-                    <SelectItem key={col.id} value={col.field}>
-                      {col.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {/* Operator */}
-              <Select 
-                value={operator} 
-                onValueChange={(val: 'equals' | 'contains') => setOperator(val)}
-              >
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contains">Contains</SelectItem>
-                  <SelectItem value="equals">Equals</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Find Value */}
-              <Input
-                value={findValue}
-                onChange={(e) => setFindValue(e.target.value)}
-                placeholder="Value to find..."
-                className="flex-1"
-              />
+        <div className="flex flex-col gap-4">
+          {/* Find */}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-semibold leading-5 text-[#3F3F46]">
+                Find
+              </span>
+              <div className="flex flex-wrap items-stretch gap-2">
+                <Select value={field} onValueChange={setField}>
+                  <SelectTrigger className="flex-1 min-h-9 h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm font-normal text-[#71717A] placeholder:text-[#71717A] [&>span]:text-[#71717A] data-[state=open]:text-[#18181B]">
+                    <SelectValue placeholder="Select field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {editableColumns.map(col => (
+                      <SelectItem key={col.id} value={col.field}>
+                        {col.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={operator}
+                  onValueChange={(val: 'equals' | 'contains') => setOperator(val)}
+                >
+                  <SelectTrigger className="w-[140px] min-h-9 h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="contains">Contains</SelectItem>
+                    <SelectItem value="equals">Equals</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={findValue}
+                  onChange={(e) => setFindValue(e.target.value)}
+                  placeholder="Value"
+                  className="w-[140px] min-h-9 h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm text-[#18181B] placeholder:text-[#71717A]"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Replace Section */}
-          <div className="space-y-3">
-            <Label className="text-base font-semibold">Replace With</Label>
-            
+          {/* Replace with */}
+          <div className="flex flex-col gap-3">
+            <span className="text-sm font-semibold leading-5 text-[#3F3F46]">
+              Replace with
+            </span>
             <Input
               value={replaceValue}
               onChange={(e) => setReplaceValue(e.target.value)}
-              placeholder="New value..."
+              placeholder="Value"
               disabled={!field || !findValue}
+              className="flex-1 min-h-9 h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm text-[#18181B] placeholder:text-[#71717A] disabled:opacity-50"
             />
           </div>
 
-          {/* Scope Selection */}
-          <div className="space-y-3">
-            <Label className="text-base font-semibold">Replace In</Label>
-            
-            <RadioGroup value={scope} onValueChange={(val: 'selection' | 'entireView' | 'project') => setScope(val)}>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="selection" id="selection" />
-                <Label htmlFor="selection" className="cursor-pointer">
-                  Selected rows ({selectedAssetIds.length} selected)
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="entireView" id="entireView" />
-                <Label htmlFor="entireView" className="cursor-pointer">
-                  Entire view ({(filteredAssets || assets).length} in view)
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="project" id="project" />
-                <Label htmlFor="project" className="cursor-pointer">
-                  Project ({assets.length} total assets)
-                </Label>
-              </div>
-            </RadioGroup>
-          </div>
+          {/* Divider */}
+          <div className="h-px self-stretch bg-[#E4E4E7]" />
 
-          {/* Preview */}
-          {field && findValue && (
-            <Card className={`border-2 ${
-              matchedAssets.length === 0 
-                ? 'bg-yellow-50 border-yellow-200' 
-                : 'bg-blue-50 border-blue-200'
-            }`}>
-              <CardContent className="pt-4">
-                <div className="flex items-center gap-2">
-                  <Search className={`w-5 h-5 ${
-                    matchedAssets.length === 0 ? 'text-yellow-600' : 'text-blue-600'
-                  }`} />
-                  <div>
-                    <p className={`text-sm font-medium ${
-                      matchedAssets.length === 0 ? 'text-yellow-900' : 'text-blue-900'
-                    }`}>
-                      {matchedAssets.length === 0 ? (
-                        'No matches found'
-                      ) : (
-                        <>
-                          <strong>{matchedAssets.length}</strong> asset
-                          {matchedAssets.length !== 1 ? 's' : ''} will be updated
-                        </>
-                      )}
-                    </p>
-                    {matchedAssets.length > 0 && replaceValue && (
-                      <p className="text-xs text-blue-700 mt-1">
-                        &quot;{findValue}&quot; → &quot;{replaceValue}&quot; in {selectedColumn?.label}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Warning */}
-          {matchedAssets.length > 0 && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-              <p className="text-sm text-orange-900">
-                <strong>⚠️ Warning:</strong> This action cannot be undone. 
-                Please verify the changes before clicking Replace.
-              </p>
+          {/* Replace in */}
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-semibold leading-5 text-[#3F3F46]">
+              Replace in
+            </span>
+            <div className="flex flex-nowrap items-center gap-1 py-1">
+              <button
+                type="button"
+                onClick={() => setScope('selection')}
+                className={cn(
+                  'h-10 px-4 py-2 rounded-lg border text-sm font-medium transition-colors whitespace-nowrap shrink-0',
+                  scope === 'selection'
+                    ? 'bg-[#FFEDD5] border-[#E86F25] text-[#E86F25] font-semibold'
+                    : 'bg-white border-[#E4E4E7] text-[#18181B] font-medium hover:bg-neutral-50'
+                )}
+              >
+                Selected rows ({selectedAssetIds.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope('entireView')}
+                className={cn(
+                  'h-10 px-4 py-2 rounded-lg border text-sm font-medium transition-colors whitespace-nowrap shrink-0',
+                  scope === 'entireView'
+                    ? 'bg-[#FFEDD5] border-[#E86F25] text-[#E86F25] font-semibold'
+                    : 'bg-white border-[#E4E4E7] text-[#18181B] font-medium hover:bg-neutral-50'
+                )}
+              >
+                Entire view ({viewCount} in view)
+              </button>
+              <button
+                type="button"
+                onClick={() => setScope('project')}
+                className={cn(
+                  'h-10 px-4 py-2 rounded-lg border text-sm font-medium transition-colors whitespace-nowrap shrink-0',
+                  scope === 'project'
+                    ? 'bg-[#FFEDD5] border-[#E86F25] text-[#E86F25] font-semibold'
+                    : 'bg-white border-[#E4E4E7] text-[#18181B] font-medium hover:bg-neutral-50'
+                )}
+              >
+                Project ({assets.length} in project)
+              </button>
             </div>
-          )}
+          </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        {/* Footer */}
+        <div className="flex justify-end items-start gap-2 pt-0">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="h-10 px-4 py-2 rounded-lg border border-[#E4E4E7] text-sm font-medium text-[#312C29] hover:bg-neutral-50"
+          >
             Cancel
           </Button>
           <Button
             onClick={handleReplace}
-            disabled={matchedAssets.length === 0 || !replaceValue}
-            className="gap-2"
+            disabled={!canReplace}
+            className="h-10 px-4 py-2 rounded-lg bg-[#E86F25] text-sm font-medium text-[#FAFAFA] hover:bg-[#d65a1a] disabled:opacity-50"
           >
-            <RefreshCw className="w-4 h-4" />
-            Replace {matchedAssets.length > 0 && `(${matchedAssets.length})`}
+            Replace
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

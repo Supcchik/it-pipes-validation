@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { FileText, Loader2, CheckCircle2, Download, Eye, Target, Settings, Eye as EyeIcon, CheckCircle, Share2, RotateCcw, Filter, List, Image, BarChart3, ShieldCheck, FileCheck, Calendar, User } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { FileText, Loader2, CheckCircle2, Image, BarChart3, ShieldCheck, FileCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,10 +10,10 @@ import { Progress } from '@/components/ui/progress';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 interface ReportGenerationDialogProps {
   open: boolean;
@@ -88,7 +87,7 @@ export default function ReportGenerationDialog({
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [selectedPreset, setSelectedPreset] = useState<'custom' | 'standard' | 'compliance' | 'visual' | 'executive'>('custom');
   const [config, setConfig] = useState<ReportConfig>({
-    scope: 'filtered',
+    scope: 'selected',
     inspectionFilter: 'newest',
     sections: {
       // Essential
@@ -137,6 +136,7 @@ export default function ReportGenerationDialog({
   });
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [generatedReport, setGeneratedReport] = useState<{
     filename: string;
     pages: number;
@@ -230,34 +230,35 @@ export default function ReportGenerationDialog({
     }
   };
 
+  const handleCancelGenerate = () => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    setGenerating(false);
+    setCurrentStep(3);
+    setProgress(0);
+  };
+
   const handleGenerate = async () => {
     setGenerating(true);
     setProgress(0);
     setCurrentStep(4);
+    progressIntervalRef.current = null;
 
     try {
       // TODO: Replace with actual API call
-      // const response = await fetch('/api/reports/generate', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     config,
-      //     assetCount: getAssetCount(),
-      //     inspectionCount: getInspectionCount(),
-      //   }),
-      // });
-      // const { jobId } = await response.json();
-
-      // Simulate generation progress
       const startTime = Date.now();
       const interval = setInterval(() => {
+        progressIntervalRef.current = interval;
         setProgress(prev => {
           const newProgress = Math.min(prev + 3, 100);
-          
+
           if (newProgress >= 100) {
             clearInterval(interval);
+            progressIntervalRef.current = null;
             const duration = Math.round((Date.now() - startTime) / 1000);
-            
+
             setGeneratedReport({
               filename: `${config.details.projectName.replace(/\s+/g, '_')}_Report_${new Date().toISOString().split('T')[0]}.pdf`,
               pages: getEstimatedPages(),
@@ -266,12 +267,10 @@ export default function ReportGenerationDialog({
             });
             setGenerating(false);
           }
-          
+
           return newProgress;
         });
       }, 200);
-
-      return () => clearInterval(interval);
     } catch (error) {
       console.error('Report generation failed:', error);
       alert('Failed to generate report. Please try again.');
@@ -330,115 +329,72 @@ export default function ReportGenerationDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-blue-600" />
+      <DialogContent
+        className={cn(
+          'sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-6 gap-4 rounded-2xl border-[#E4E4E7]',
+          'shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)]'
+        )}
+      >
+        <DialogHeader className="gap-0">
+          <DialogTitle className="text-[#09090B] text-lg font-semibold leading-7">
             Generate Report
           </DialogTitle>
         </DialogHeader>
-
-        {/* Progress Stepper */}
-        {!generatedReport && (
-          <div className="border-b border-neutral-200 pb-4">
-            <div className="flex items-center justify-between px-4">
-              {[
-                { num: 1, label: 'Scope', icon: Target },
-                { num: 2, label: 'Options', icon: Settings },
-                { num: 3, label: 'Preview', icon: EyeIcon },
-                { num: 4, label: 'Done', icon: CheckCircle }
-              ].map((step, index) => {
-                const Icon = step.icon;
-                const isCompleted = step.num < currentStep;
-                const isActive = step.num === currentStep;
-                const isUpcoming = step.num > currentStep;
-                
-                return (
-                  <div key={step.num} className="flex items-center flex-1">
-                    <div className="flex items-center flex-1">
-                      <button
-                        onClick={() => isCompleted && setCurrentStep(step.num as Step)}
-                        className={`relative flex items-center justify-center transition-all ${
-                          isCompleted ? 'cursor-pointer hover:scale-110' : 'cursor-default'
-                        }`}
-                        disabled={!isCompleted}
-                      >
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
-                            isCompleted
-                              ? 'bg-green-100 text-green-700 ring-2 ring-green-200'
-                              : isActive
-                              ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300 animate-pulse'
-                              : 'bg-neutral-100 text-neutral-400'
-                          }`}
-                        >
-                          {isCompleted ? (
-                            <CheckCircle className="w-5 h-5" />
-                          ) : (
-                            <Icon className="w-5 h-5" />
-                          )}
-                        </div>
-                        <div className="ml-2 text-xs font-medium">
-                          {step.label}
-                        </div>
-                      </button>
-                    </div>
-                    {index < 3 && (
-                      <div className="flex-1 mx-2 h-1 bg-neutral-200 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-500 ${
-                            isCompleted || isActive
-                              ? 'bg-green-500'
-                              : 'bg-neutral-200'
-                          }`}
-                          style={{
-                            width: isCompleted ? '100%' : isActive ? '50%' : '0%'
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Step Content */}
         <div className="flex-1 overflow-auto p-6">
           {renderStepContent()}
         </div>
 
-        {/* Navigation */}
+        {/* Navigation: steps 1–3 */}
         {!generatedReport && !generating && (
-          <div className="border-t border-neutral-200 p-4 flex justify-between">
+          <div className="border-t border-[#E4E4E7] pt-4 flex justify-end gap-2">
+            {currentStep !== 3 && (
+              <Button
+                variant="outline"
+                onClick={currentStep === 1 ? handleClose : handleBack}
+                className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] font-medium"
+              >
+                {currentStep === 1 ? 'Cancel' : 'Back'}
+              </Button>
+            )}
+            {currentStep < 3 && (
+              <Button
+                onClick={handleNext}
+                className="h-10 px-4 rounded-lg bg-[#E86F25] text-[#FAFAFA] font-medium hover:bg-[#d66320]"
+              >
+                Next
+              </Button>
+            )}
+            {currentStep === 3 && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setCurrentStep(2)}
+                  className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium leading-5"
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleGenerate}
+                  className="h-10 px-4 rounded-lg bg-[#E86F25] text-[#FAFAFA] text-sm font-medium leading-5 hover:bg-[#d66320]"
+                >
+                  Generate Report
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+        {/* Footer during generation: Cancel only */}
+        {generating && (
+          <div className="border-t border-[#E4E4E7] pt-4 flex justify-end">
             <Button
               variant="outline"
-              onClick={currentStep === 1 ? handleClose : handleBack}
+              onClick={handleCancelGenerate}
+              className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium leading-5"
             >
-              {currentStep === 1 ? 'Cancel' : '← Back'}
+              Cancel
             </Button>
-            <div className="flex gap-2">
-              {currentStep < 3 && (
-                <Button onClick={handleNext}>
-                  Next →
-                </Button>
-              )}
-              {currentStep === 3 && (
-                <>
-                  <Button 
-                    variant="outline"
-                    onClick={() => setCurrentStep(2)}
-                  >
-                    ← Edit Contents
-                  </Button>
-                  <Button onClick={handleGenerate}>
-                    <FileText className="w-4 h-4 mr-2" />
-                    Generate PDF
-                  </Button>
-                </>
-              )}
-            </div>
           </div>
         )}
       </DialogContent>
@@ -446,13 +402,13 @@ export default function ReportGenerationDialog({
   );
 }
 
-// Step 1 Component
-function Step1Scope({ 
-  config, 
-  setConfig, 
-  totalAssets, 
-  filteredAssets, 
-  selectedAssets 
+// Step 1: Report scope + Inspections filter (Figma layout)
+function Step1Scope({
+  config,
+  setConfig,
+  totalAssets,
+  filteredAssets,
+  selectedAssets
 }: {
   config: ReportConfig;
   setConfig: React.Dispatch<React.SetStateAction<ReportConfig>>;
@@ -460,168 +416,108 @@ function Step1Scope({
   filteredAssets: number;
   selectedAssets: number;
 }) {
-  const assetCounts = {
-    selected: selectedAssets,
-    filtered: filteredAssets,
-    all: totalAssets,
-  };
+  const scopeOptions: Array<{ value: ReportScope; title: string; description: string }> = [
+    { value: 'selected', title: `Selected assets (${selectedAssets})`, description: 'Include only assets you selected in table' },
+    { value: 'filtered', title: `All assets in view (${filteredAssets})`, description: 'Include all assets in current view with applied filters' },
+    { value: 'all', title: `All assets in project (${totalAssets})`, description: 'Include all assets in the entire project' },
+  ];
+  const filterOptions: Array<{ value: InspectionFilter; title: string; description: string }> = [
+    { value: 'newest', title: 'Newest inspections only', description: 'One inspection per asset (most recent)' },
+    { value: 'all', title: 'All inspections', description: 'Include all inspections for each asset' },
+  ];
 
-  const getPreviewText = () => {
-    const assetCount = assetCounts[config.scope as keyof typeof assetCounts];
-    const inspectionCount = config.inspectionFilter === 'newest' ? assetCount : assetCount * 2;
-    const estimatedPages = Math.ceil(inspectionCount / 5) + 4; // Base pages + inspections
-    
-    return {
-      assets: assetCount,
-      inspections: inspectionCount,
-      inspectionText: config.inspectionFilter === 'newest' ? 'newest only' : 'all',
-      pages: estimatedPages,
-    };
-  };
-
-  const preview = getPreviewText();
+  const cardSelected = 'bg-[#FFEDD5] border-[#E86F25]';
+  const cardDefault = 'border-[#E4E4E7]';
+  const textSelected = 'text-[#E86F25]';
+  const textDefault = 'text-[#18181B]';
+  const iconSelected = 'bg-[#E86F25]';
+  const iconDefault = 'bg-[#71717A]';
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold mb-2">Report Scope</h3>
-        <p className="text-sm text-neutral-600">
-          Select which assets to include in the report
-        </p>
+    <div className="flex flex-col gap-4">
+      <div className="space-y-3">
+        <div className="text-[#3F3F46] text-sm font-semibold leading-5">Report scope</div>
+        <div className="flex flex-col gap-3">
+          {scopeOptions.map((opt) => {
+            const selected = config.scope === opt.value;
+            return (
+              <div
+                key={opt.value}
+                role="button"
+                tabIndex={0}
+                onClick={() => setConfig({ ...config, scope: opt.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setConfig({ ...config, scope: opt.value });
+                  }
+                }}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-2 rounded-lg border min-h-[84px] cursor-pointer transition-colors',
+                  selected ? cardSelected : cardDefault
+                )}
+              >
+                <div
+                  className={cn(
+                    'w-4 h-4 shrink-0 rounded-full',
+                    selected ? iconSelected : iconDefault
+                  )}
+                />
+                <div className="flex flex-1 flex-col gap-1">
+                  <div className={cn('text-base font-semibold leading-6', selected ? textSelected : textDefault)}>
+                    {opt.title}
+                  </div>
+                  <div className={cn('text-sm font-medium leading-5', selected ? textSelected : textDefault)}>
+                    {opt.description}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7]" />
 
       <div className="space-y-3">
-        <Label className="text-sm font-semibold">Report Scope</Label>
-        <RadioGroup
-          value={config.scope}
-          onValueChange={(value) => setConfig({ ...config, scope: value as ReportScope })}
-        >
-          <div className="space-y-3">
-            <label
-              htmlFor="scope-selected"
-              className={`flex items-start space-x-3 border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                config.scope === 'selected'
-                  ? 'border-blue-500 bg-blue-50 shadow-sm'
-                  : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-              }`}
-            >
-              <RadioGroupItem value="selected" id="scope-selected" className="mt-1" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <Filter className="w-4 h-4 text-blue-600" />
-                  <Label htmlFor="scope-selected" className="font-semibold cursor-pointer">
-                    Selected Assets ({assetCounts.selected} inspections)
-                  </Label>
-                </div>
-                <p className="text-xs text-neutral-600">
-                  Include only the assets you selected in the table
-                </p>
-                {config.scope === 'selected' && (
-                  <p className="text-xs text-blue-600 mt-1 font-medium">✓ Quick to generate</p>
+        <div className="text-[#3F3F46] text-sm font-semibold leading-5">Inspections filter</div>
+        <div className="flex flex-col gap-3">
+          {filterOptions.map((opt) => {
+            const selected = config.inspectionFilter === opt.value;
+            return (
+              <div
+                key={opt.value}
+                role="button"
+                tabIndex={0}
+                onClick={() => setConfig({ ...config, inspectionFilter: opt.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setConfig({ ...config, inspectionFilter: opt.value });
+                  }
+                }}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-2 rounded-lg border min-h-[84px] cursor-pointer transition-colors',
+                  selected ? cardSelected : cardDefault
                 )}
-              </div>
-            </label>
-
-            <label
-              htmlFor="scope-filtered"
-              className={`flex items-start space-x-3 border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                config.scope === 'filtered'
-                  ? 'border-blue-500 bg-blue-50 shadow-sm'
-                  : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-              }`}
-            >
-              <RadioGroupItem value="filtered" id="scope-filtered" className="mt-1" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <List className="w-4 h-4 text-green-600" />
-                  <Label htmlFor="scope-filtered" className="font-semibold cursor-pointer">
-                    All Assets in View ({assetCounts.filtered} inspections)
-                  </Label>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Recommended</span>
+              >
+                <div
+                  className={cn(
+                    'w-4 h-4 shrink-0 rounded-full',
+                    selected ? iconSelected : iconDefault
+                  )}
+                />
+                <div className="flex flex-1 flex-col gap-1">
+                  <div className={cn('text-base font-semibold leading-6', selected ? textSelected : textDefault)}>
+                    {opt.title}
+                  </div>
+                  <div className={cn('text-sm font-medium leading-5', selected ? textSelected : textDefault)}>
+                    {opt.description}
+                  </div>
                 </div>
-                <p className="text-xs text-neutral-600">
-                  Include all assets currently visible (with filters applied)
-                </p>
-                {config.scope === 'filtered' && (
-                  <p className="text-xs text-green-600 mt-1 font-medium">✓ Best for most cases</p>
-                )}
               </div>
-            </label>
-
-            <label
-              htmlFor="scope-all"
-              className={`flex items-start space-x-3 border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                config.scope === 'all'
-                  ? 'border-blue-500 bg-blue-50 shadow-sm'
-                  : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-              }`}
-            >
-              <RadioGroupItem value="all" id="scope-all" className="mt-1" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText className="w-4 h-4 text-orange-600" />
-                  <Label htmlFor="scope-all" className="font-semibold cursor-pointer">
-                    All Assets in Project ({assetCounts.all} inspections)
-                  </Label>
-                </div>
-                <p className="text-xs text-neutral-600">
-                  Include every asset regardless of filters
-                </p>
-                {config.scope === 'all' && (
-                  <p className="text-xs text-orange-600 mt-1 font-medium">⚠️ Large file size</p>
-                )}
-              </div>
-            </label>
-          </div>
-        </RadioGroup>
-      </div>
-
-      <div className="h-px bg-neutral-200" />
-
-      <div className="space-y-3">
-        <Label className="text-sm font-semibold">Inspection Filter</Label>
-        <RadioGroup
-          value={config.inspectionFilter}
-          onValueChange={(value) => setConfig({ ...config, inspectionFilter: value as InspectionFilter })}
-        >
-          <div className="space-y-3">
-            <div className="flex items-start space-x-3">
-              <RadioGroupItem value="newest" id="filter-newest" className="mt-1" />
-              <div className="flex-1">
-                <Label htmlFor="filter-newest" className="font-medium cursor-pointer">
-                  Newest Inspection Only
-                </Label>
-                <p className="text-xs text-neutral-600 mt-1">
-                  One inspection per asset (most recent)
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start space-x-3">
-              <RadioGroupItem value="all" id="filter-all" className="mt-1" />
-              <div className="flex-1">
-                <Label htmlFor="filter-all" className="font-medium cursor-pointer">
-                  All Inspections
-                </Label>
-                <p className="text-xs text-neutral-600 mt-1">
-                  Include every inspection for each asset
-                </p>
-              </div>
-            </div>
-          </div>
-        </RadioGroup>
-      </div>
-
-      <div className="h-px bg-neutral-200" />
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold mb-2">📊 Preview</h4>
-        <div className="space-y-1 text-sm text-neutral-700">
-          <p>Assets: <strong>{preview.assets}</strong></p>
-          <p>Inspections: <strong>{preview.inspections}</strong> ({preview.inspectionText})</p>
-          <p>Estimated Pages: <strong>~{preview.pages}</strong></p>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -673,7 +569,7 @@ const PACKAGE_PRESETS = {
   },
 };
 
-// Template Section Component
+// Template Section: картки з чекбоксом, опційний чіп (Recommended / +X MB)
 interface TemplateSectionProps {
   title: string;
   sections: Array<{
@@ -688,45 +584,66 @@ interface TemplateSectionProps {
 }
 
 function TemplateSection({ title, sections, config, onToggle }: TemplateSectionProps) {
+  const cardSelected = 'bg-[#FFEDD5] border-[#E86F25]';
+  const cardDefault = 'border-[#E4E4E7]';
+  const textSelected = 'text-[#E86F25]';
+  const textDefault = 'text-[#18181B]';
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <Label className="text-sm font-semibold">{title}</Label>
-      </div>
-      
-      <div className="space-y-2">
-        {sections.map((section) => (
-          <div key={section.key} className="border border-neutral-200 rounded-lg p-3 hover:border-blue-300 transition-colors">
-            <div className="flex items-start space-x-3">
+      <div className="text-[#3F3F46] text-sm font-semibold leading-5">{title}</div>
+      <div className="flex flex-col gap-3">
+        {sections.map((section) => {
+          const checked = config.sections[section.key as keyof typeof config.sections] as boolean;
+          return (
+            <div
+              key={section.key}
+              role="button"
+              tabIndex={0}
+              onClick={() => onToggle(section.key)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onToggle(section.key);
+                }
+              }}
+              className={cn(
+                'flex items-center gap-3 px-4 py-2 rounded-lg border min-h-[84px] cursor-pointer transition-colors',
+                checked ? cardSelected : cardDefault
+              )}
+            >
               <Checkbox
-                id={section.key}
-                checked={config.sections[section.key as keyof typeof config.sections] as boolean}
+                checked={checked}
                 onCheckedChange={() => onToggle(section.key)}
-                className="mt-1"
+                onClick={(e) => e.stopPropagation()}
+                className={cn(
+                  'rounded border-[#E4E4E7] shrink-0',
+                  checked && 'border-[#E86F25] data-[state=checked]:bg-[#E86F25] data-[state=checked]:border-[#E86F25]'
+                )}
               />
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor={section.key} className="font-medium cursor-pointer">
+              <div className="flex flex-1 flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={cn('text-base font-semibold leading-6', checked ? textSelected : textDefault)}>
                     {section.label}
-                  </Label>
+                  </span>
                   {section.recommended && (
-                    <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                    <span className="px-3 py-0.5 rounded-lg bg-[#E0E7FF] text-[#1E3A8A] text-xs font-semibold leading-4">
                       Recommended
                     </span>
                   )}
                   {section.fileImpact && (
-                    <span className="text-xs px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full">
+                    <span className="px-3 py-0.5 rounded-lg bg-[#FFF7ED] text-[#B45309] text-xs font-semibold leading-4">
                       {section.fileImpact}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-neutral-600 mt-1">
+                <span className={cn('text-sm font-medium leading-5', checked ? textSelected : textDefault)}>
                   {section.description}
-                </p>
+                </span>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -813,95 +730,56 @@ function Step2Options({
     setSelectedPreset('custom');
   };
 
+  const pillSelected = 'h-10 px-4 py-2 rounded-lg bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold text-sm';
+  const pillDefault = 'h-10 px-4 py-2 rounded-lg border border-[#E4E4E7] text-[#18181B] font-medium text-sm';
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold mb-2">Configure Report Sections</h3>
-        <p className="text-sm text-neutral-600">
-          Select report templates and configure display options
-        </p>
-      </div>
+    <div className="flex flex-col gap-4 flex-1 min-h-0 overflow-auto">
+      <h3 className="text-[#09090B] text-lg font-semibold leading-7 shrink-0">Configure Report Sections</h3>
 
-      <div className="h-px bg-neutral-200" />
-
-      {/* Package Presets */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Package Presets</Label>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant={selectedPreset === 'custom' ? 'default' : 'outline'}
-            size="sm"
-            onClick={handleCustomPreset}
-          >
-            Custom
-          </Button>
-          <Button
-            variant={selectedPreset === 'standard' ? 'default' : 'outline'}
-            size="sm"
+      <div className="space-y-3 shrink-0">
+        <div className="text-[#3F3F46] text-sm font-semibold leading-5">Package Preset</div>
+        <div className="flex flex-wrap items-center gap-1 py-1">
+          <button
+            type="button"
             onClick={() => applyPreset('standard')}
+            className={selectedPreset === 'standard' ? pillSelected : pillDefault}
           >
             Standard Report
-          </Button>
-          <Button
-            variant={selectedPreset === 'compliance' ? 'default' : 'outline'}
-            size="sm"
+          </button>
+          <button
+            type="button"
             onClick={() => applyPreset('compliance')}
+            className={selectedPreset === 'compliance' ? pillSelected : pillDefault}
           >
             Compliance
-          </Button>
-          <Button
-            variant={selectedPreset === 'visual' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => applyPreset('visual')}
+          </button>
+          <button
+            type="button"
+            onClick={handleCustomPreset}
+            className={selectedPreset === 'custom' ? pillSelected : pillDefault}
           >
-            Visual
-          </Button>
-          <Button
-            variant={selectedPreset === 'executive' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => applyPreset('executive')}
-          >
-            Executive
-          </Button>
+            Custom
+          </button>
         </div>
       </div>
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
-      {/* Essential Sections */}
+      {/* Essential sections */}
       <TemplateSection
-        title="Essential Sections"
+        title="Essential sections"
         sections={[
-          {
-            key: 'coverPage',
-            label: 'Cover Page',
-            description: 'Project title, date, inspector information',
-            recommended: true,
-          },
-          {
-            key: 'executiveSummary',
-            label: 'Executive Summary',
-            description: 'Key findings, statistics, recommendations',
-            recommended: true,
-          },
-          {
-            key: 'mapOverview',
-            label: 'Map Overview',
-            description: 'Geographic overview with asset locations',
-            recommended: true,
-          },
-          {
-            key: 'assetListTable',
-            label: 'Asset List Table',
-            description: 'Tabular data with all asset information',
-            recommended: true,
-          },
+          { key: 'coverPage', label: 'Cover page', description: 'Project title, date, inspector information', recommended: true },
+          { key: 'executiveSummary', label: 'Executive Summary', description: 'Key findings, statistics, recommendations', recommended: true },
+          { key: 'mapOverview', label: 'Map Overview', description: 'Geographic overview with asset locations', recommended: true },
+          { key: 'assetListTable', label: 'Asset List Table', description: 'Table data with all asset information', recommended: true },
         ]}
         config={config}
         onToggle={toggleSection}
       />
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
       {/* Project Information */}
       <TemplateSection
@@ -922,7 +800,7 @@ function Step2Options({
         onToggle={toggleSection}
       />
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
       {/* Inclination Analysis */}
       <TemplateSection
@@ -948,7 +826,7 @@ function Step2Options({
         onToggle={toggleSection}
       />
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
       {/* Defect Reports */}
       <TemplateSection
@@ -991,7 +869,7 @@ function Step2Options({
         onToggle={toggleSection}
       />
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
       {/* Inspection Photos */}
       <TemplateSection
@@ -1020,7 +898,7 @@ function Step2Options({
         onToggle={toggleSection}
       />
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
       {/* Compliance & Standards */}
       <TemplateSection
@@ -1042,250 +920,151 @@ function Step2Options({
         onToggle={toggleSection}
       />
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
-      {/* Display Configuration */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Settings className="w-4 h-4 text-neutral-600" />
-          <Label className="text-sm font-semibold">Display Configuration</Label>
-        </div>
-        
-        {/* Header Style */}
-        <div className="border border-neutral-200 rounded-lg p-4 bg-neutral-50/50">
-          <div className="space-y-3">
-            <Label className="text-sm font-medium text-neutral-700">Header Style</Label>
-            <p className="text-xs text-neutral-500">Choose how column headers are displayed in the report</p>
-            <RadioGroup
-              value={config.display?.headerStyle || 'alias'}
-              onValueChange={(value) => updateDisplay('headerStyle', value)}
-              className="space-y-2"
-            >
-              <label
-                htmlFor="header-alias"
-                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  config.display?.headerStyle === 'alias'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-                }`}
-              >
-                <RadioGroupItem value="alias" id="header-alias" />
-                <div className="flex-1">
-                  <Label htmlFor="header-alias" className="font-medium cursor-pointer text-sm">
-                    Alias
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Use friendly column names</p>
-                </div>
-              </label>
-              <label
-                htmlFor="header-desc"
-                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  config.display?.headerStyle === 'description'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-                }`}
-              >
-                <RadioGroupItem value="description" id="header-desc" />
-                <div className="flex-1">
-                  <Label htmlFor="header-desc" className="font-medium cursor-pointer text-sm">
-                    Description
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Use full descriptive names</p>
-                </div>
-              </label>
-              <label
-                htmlFor="header-code"
-                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  config.display?.headerStyle === 'code'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-                }`}
-              >
-                <RadioGroupItem value="code" id="header-code" />
-                <div className="flex-1">
-                  <Label htmlFor="header-code" className="font-medium cursor-pointer text-sm">
-                    Code
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Use technical code identifiers</p>
-                </div>
-              </label>
-            </RadioGroup>
+      {/* Display Configuration: bordered blocks, card-style options */}
+      <div className="space-y-4 shrink-0">
+        <div className="text-[#3F3F46] text-sm font-semibold leading-5">Display Configuration</div>
+
+        <div className="rounded-lg border border-[#E4E4E7] p-1 space-y-0">
+          <div className="px-2 py-2 space-y-0.5">
+            <div className="text-[#3F3F46] text-sm font-semibold leading-5">Header Style</div>
+            <div className="text-[#3F3F46] text-sm font-normal leading-5">Choose how column headers are displayed in the report</div>
           </div>
+          <div className="h-px bg-[#E4E4E7]" />
+          {[
+            { value: 'alias', label: 'Alias', desc: 'Use friendly column names' },
+            { value: 'description', label: 'Description', desc: 'Use full descriptive names' },
+            { value: 'code', label: 'Code', desc: 'Use technical code identifiers' },
+          ].map((opt) => {
+            const selected = (config.display?.headerStyle || 'alias') === opt.value;
+            return (
+              <div
+                key={opt.value}
+                role="button"
+                tabIndex={0}
+                onClick={() => updateDisplay('headerStyle', opt.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); updateDisplay('headerStyle', opt.value); } }}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-2 min-h-[84px] rounded-lg border cursor-pointer transition-colors',
+                  selected ? 'bg-[#FFEDD5] border-[#E86F25]' : 'border-[#E4E4E7]'
+                )}
+              >
+                <div className="flex-1 flex flex-col gap-1">
+                  <span className={cn('text-base font-semibold leading-6', selected ? 'text-[#E86F25]' : 'text-[#18181B]')}>{opt.label}</span>
+                  <span className={cn('text-sm font-medium leading-5', selected ? 'text-[#E86F25]' : 'text-[#18181B]')}>{opt.desc}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        
-        {/* Code Display */}
-        <div className="border border-neutral-200 rounded-lg p-4 bg-neutral-50/50">
-          <div className="space-y-3">
-            <Label className="text-sm font-medium text-neutral-700">Code Display</Label>
-            <p className="text-xs text-neutral-500">Choose how codes are shown in the report</p>
-            <RadioGroup
-              value={config.display?.codeDisplay || 'description'}
-              onValueChange={(value) => updateDisplay('codeDisplay', value)}
-              className="space-y-2"
-            >
-              <label
-                htmlFor="code-code"
-                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  config.display?.codeDisplay === 'code'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-                }`}
-              >
-                <RadioGroupItem value="code" id="code-code" />
-                <div className="flex-1">
-                  <Label htmlFor="code-code" className="font-medium cursor-pointer text-sm">
-                    Code Only
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Show only code values (e.g., &quot;A1&quot;)</p>
-                </div>
-              </label>
-              <label
-                htmlFor="code-desc"
-                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  config.display?.codeDisplay === 'description'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-                }`}
-              >
-                <RadioGroupItem value="description" id="code-desc" />
-                <div className="flex-1">
-                  <Label htmlFor="code-desc" className="font-medium cursor-pointer text-sm">
-                    Description Only
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Show only descriptive text</p>
-                </div>
-              </label>
-              <label
-                htmlFor="code-both"
-                className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                  config.display?.codeDisplay === 'both'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-neutral-200 hover:border-blue-300 hover:bg-neutral-50'
-                }`}
-              >
-                <RadioGroupItem value="both" id="code-both" />
-                <div className="flex-1">
-                  <Label htmlFor="code-both" className="font-medium cursor-pointer text-sm">
-                    Code & Description
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Show both code and description</p>
-                </div>
-              </label>
-            </RadioGroup>
+
+        <div className="rounded-lg border border-[#E4E4E7] p-1 space-y-0">
+          <div className="px-2 py-2 space-y-0.5">
+            <div className="text-[#3F3F46] text-sm font-semibold leading-5">Code Display</div>
+            <div className="text-[#3F3F46] text-sm font-normal leading-5">Choose how codes are shown in the report</div>
           </div>
+          <div className="h-px bg-[#E4E4E7]" />
+          {[
+            { value: 'code', label: 'Code Only', desc: 'Show only code values (e.g., "A1")' },
+            { value: 'description', label: 'Description Only', desc: 'Show only descriptive text' },
+            { value: 'both', label: 'Code & Description', desc: 'Show both code and description' },
+          ].map((opt) => {
+            const selected = (config.display?.codeDisplay || 'description') === opt.value;
+            return (
+              <div
+                key={opt.value}
+                role="button"
+                tabIndex={0}
+                onClick={() => updateDisplay('codeDisplay', opt.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); updateDisplay('codeDisplay', opt.value); } }}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-2 min-h-[84px] rounded-lg border cursor-pointer transition-colors',
+                  selected ? 'bg-[#FFEDD5] border-[#E86F25]' : 'border-[#E4E4E7]'
+                )}
+              >
+                <div className="flex-1 flex flex-col gap-1">
+                  <span className={cn('text-base font-semibold leading-6', selected ? 'text-[#E86F25]' : 'text-[#18181B]')}>{opt.label}</span>
+                  <span className={cn('text-sm font-medium leading-5', selected ? 'text-[#E86F25]' : 'text-[#18181B]')}>{opt.desc}</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        
-        {/* Additional Options */}
-        <div className="border border-neutral-200 rounded-lg p-4 bg-neutral-50/50">
-          <div className="space-y-3">
-            <Label className="text-sm font-medium text-neutral-700">Additional Options</Label>
-            <p className="text-xs text-neutral-500">Enable extra features for enhanced reports</p>
-            <div className="space-y-2">
-              <label
-                htmlFor="show-colors"
-                className="flex items-start space-x-3 p-3 rounded-lg border border-neutral-200 hover:border-blue-300 hover:bg-neutral-50 cursor-pointer transition-all"
-              >
-                <Checkbox
-                  id="show-colors"
-                  checked={config.display?.showColors || false}
-                  onCheckedChange={(checked) => updateDisplay('showColors', checked as boolean)}
-                  className="mt-0.5"
-                />
-                <div className="flex-1">
-                  <Label htmlFor="show-colors" className="font-medium cursor-pointer text-sm">
-                    Show color-coded severity indicators
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Add visual color indicators for defect severity levels</p>
-                </div>
-              </label>
-              <label
-                htmlFor="individual-pdfs"
-                className="flex items-start space-x-3 p-3 rounded-lg border border-neutral-200 hover:border-blue-300 hover:bg-neutral-50 cursor-pointer transition-all"
-              >
-                <Checkbox
-                  id="individual-pdfs"
-                  checked={config.display?.individualPDFs || false}
-                  onCheckedChange={(checked) => updateDisplay('individualPDFs', checked as boolean)}
-                  className="mt-0.5"
-                />
-                <div className="flex-1">
-                  <Label htmlFor="individual-pdfs" className="font-medium cursor-pointer text-sm">
-                    Generate individual PDFs per inspection
-                  </Label>
-                  <p className="text-xs text-neutral-600 mt-0.5">Create separate PDF file for each inspection</p>
-                </div>
-              </label>
+
+        <div className="rounded-lg border border-[#E4E4E7] p-1 space-y-0">
+          <div className="px-2 py-2 space-y-0.5">
+            <div className="text-[#3F3F46] text-sm font-semibold leading-5">Additional Options</div>
+            <div className="text-[#3F3F46] text-sm font-normal leading-5">Enable extra features for enhanced reports</div>
+          </div>
+          <div className="h-px bg-[#E4E4E7]" />
+          <div
+            onClick={() => updateDisplay('showColors', !(config.display?.showColors ?? false))}
+            className="flex items-center gap-3 px-4 py-2 min-h-[84px] rounded-lg border border-[#E4E4E7] cursor-pointer"
+          >
+            <Checkbox
+              checked={config.display?.showColors ?? false}
+              onCheckedChange={(c) => updateDisplay('showColors', c as boolean)}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0"
+            />
+            <div className="flex-1 flex flex-col gap-1">
+              <span className="text-base font-semibold leading-6 text-[#18181B]">Show color-coded severity indicators</span>
+              <span className="text-sm font-medium leading-5 text-[#18181B]">Add visual color indicators for defect severity levels</span>
+            </div>
+          </div>
+          <div
+            onClick={() => updateDisplay('individualPDFs', !(config.display?.individualPDFs ?? false))}
+            className="flex items-center gap-3 px-4 py-2 min-h-[84px] rounded-lg border border-[#E4E4E7] cursor-pointer"
+          >
+            <Checkbox
+              checked={config.display?.individualPDFs ?? false}
+              onCheckedChange={(c) => updateDisplay('individualPDFs', c as boolean)}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0"
+            />
+            <div className="flex-1 flex flex-col gap-1">
+              <span className="text-base font-semibold leading-6 text-[#18181B]">Generate individual PDFs per inspection</span>
+              <span className="text-sm font-medium leading-5 text-[#18181B]">Create separate PDF file for each inspection</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="h-px bg-neutral-200" />
+      <div className="h-px bg-[#E4E4E7] shrink-0" />
 
-      <div className="space-y-3">
-        <Label className="text-sm font-semibold">Report Details</Label>
-        <div className="grid grid-cols-1 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="project-name" className="text-xs flex items-center gap-2">
-              <FileText className="w-3 h-3" />
-              Project Name
-            </Label>
+      <div className="space-y-3 shrink-0">
+        <div className="text-[#3F3F46] text-sm font-semibold leading-5">Report Details</div>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="project-name" className="text-[#18181B] text-sm font-medium leading-5">Project Name</label>
             <Input
               id="project-name"
               value={config.details.projectName}
               onChange={(e) => updateDetail('projectName', e.target.value)}
-              placeholder="Enter project name"
+              className="min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="prepared-by" className="text-xs flex items-center gap-2">
-              <User className="w-3 h-3" />
-              Prepared By
-            </Label>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="prepared-by" className="text-[#18181B] text-sm font-medium leading-5">Prepared By</label>
             <Input
               id="prepared-by"
               value={config.details.preparedBy}
               onChange={(e) => updateDetail('preparedBy', e.target.value)}
-              placeholder="Inspector name"
+              className="min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="report-date" className="text-xs flex items-center gap-2">
-              <Calendar className="w-3 h-3" />
-              Report Date
-            </Label>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="report-date" className="text-[#18181B] text-sm font-medium leading-5">Report Date</label>
             <Input
               id="report-date"
               type="date"
               value={config.details.reportDate}
               onChange={(e) => updateDetail('reportDate', e.target.value)}
+              className="min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm"
             />
           </div>
         </div>
-      </div>
-
-      <div className="h-px bg-neutral-200" />
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold mb-3">Live Preview</h4>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-xs text-neutral-600 mb-1">Estimated Pages</p>
-            <p className="text-2xl font-bold text-blue-700">
-              ~{getEstimatedPages()}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-neutral-600 mb-1">File Size</p>
-            <p className="text-2xl font-bold text-blue-700">
-              {getEstimatedFileSize()}
-            </p>
-          </div>
-        </div>
-        {(config.sections.images4PerPage || config.sections.images2PerPage || config.sections.images1PerPage || 
-          config.sections.defectPlotCenterWithImages || config.sections.defectPlotLeftWithImages) && (
-          <p className="text-xs text-orange-600 mt-2">⚠️ Image sections will significantly increase file size</p>
-        )}
       </div>
     </div>
   );
@@ -1294,170 +1073,58 @@ function Step2Options({
 // Step 3 Component - Enhanced Preview
 function Step3Preview({ 
   config, 
-  setConfig,
   getEstimatedPages,
-  getEstimatedFileSize,
   assetCount,
-  inspectionCount
 }: { 
   config: ReportConfig;
-  setConfig: React.Dispatch<React.SetStateAction<ReportConfig>>;
+  setConfig?: React.Dispatch<React.SetStateAction<ReportConfig>>;
   getEstimatedPages: () => number;
-  getEstimatedFileSize: () => string;
+  getEstimatedFileSize?: () => string;
   assetCount: number;
-  inspectionCount: number;
+  inspectionCount?: number;
 }) {
-  const [selectedPage, setSelectedPage] = useState(0);
-
-  // Build pages list based on selected sections
-  const buildPagesList = () => {
-    const pages: Array<{ id: number; title: string; type: string; section: string }> = [];
-    let pageId = 0;
-
-    if (config.sections.coverPage) {
-      pages.push({ id: pageId++, title: 'Cover Page', type: 'cover', section: 'coverPage' });
-    }
-    if (config.sections.executiveSummary) {
-      pages.push({ id: pageId++, title: 'Executive Summary', type: 'summary', section: 'executiveSummary' });
-    }
-    if (config.sections.mapOverview) {
-      pages.push({ id: pageId++, title: 'Map Overview', type: 'map', section: 'mapOverview' });
-    }
-    if (config.sections.assetListTable) {
-      const assetPages = Math.ceil(assetCount / 30);
-      for (let i = 0; i < Math.min(assetPages, 3); i++) {
-        pages.push({ id: pageId++, title: `Asset List (Page ${i + 1})`, type: 'table', section: 'assetListTable' });
-      }
-      if (assetPages > 3) {
-        pages.push({ id: pageId++, title: `... ${assetPages - 3} more asset pages`, type: 'table', section: 'assetListTable' });
-      }
-    }
-    if (config.sections.defectListing) {
-      pages.push({ id: pageId++, title: 'Defect Listing', type: 'defect', section: 'defectListing' });
-    }
-    if (config.sections.images4PerPage || config.sections.images2PerPage || config.sections.images1PerPage) {
-      pages.push({ id: pageId++, title: 'Photo Gallery', type: 'photos', section: 'images' });
-    }
-    if (config.sections.pacpCompliance) {
-      pages.push({ id: pageId++, title: 'PACP Compliance', type: 'compliance', section: 'pacpCompliance' });
-    }
-
-    return pages;
-  };
-
-  const pages = buildPagesList();
+  const [selectedPage] = useState(0);
   const totalPages = getEstimatedPages();
-
-  const toggleSection = (sectionKey: keyof typeof config.sections) => {
-    setConfig({
-      ...config,
-      sections: {
-        ...config.sections,
-        [sectionKey]: !config.sections[sectionKey]
-      }
-    });
-  };
-
-  // Get sections checklist
-  const getSectionsChecklist = () => {
-    const sections: Array<{ key: keyof typeof config.sections; name: string; included: boolean; itemCount?: number }> = [];
-    
-    if (config.sections.coverPage) sections.push({ key: 'coverPage', name: 'Cover Page', included: true });
-    if (config.sections.executiveSummary) sections.push({ key: 'executiveSummary', name: 'Executive Summary', included: true, itemCount: assetCount });
-    if (config.sections.assetListTable) sections.push({ key: 'assetListTable', name: 'Asset List', included: true, itemCount: assetCount });
-    if (config.sections.defectListing) sections.push({ key: 'defectListing', name: 'Observations Details', included: true, itemCount: inspectionCount });
-    if (config.sections.images4PerPage || config.sections.images2PerPage || config.sections.images1PerPage) {
-      sections.push({ key: 'images4PerPage', name: 'Photo Gallery', included: true, itemCount: inspectionCount * 4 });
-    }
-    if (config.sections.pacpCompliance) sections.push({ key: 'pacpCompliance', name: 'Compliance Standards', included: true });
-
-    return sections;
-  };
-
-  const sectionsChecklist = getSectionsChecklist();
+  const titillium = { fontFamily: 'var(--font-titillium), sans-serif' };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Report Preview</h3>
-          <p className="text-sm text-neutral-600">
-            Review and adjust report contents before generating
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-sm text-neutral-600">Estimated:</p>
-          <p className="text-lg font-bold text-blue-600">{totalPages} pages</p>
-        </div>
-      </div>
-
-      <div className="flex gap-4 h-[500px]">
+      <div className="flex flex-col h-[500px]">
         {/* Preview Thumbnail */}
-        <div className="flex-1 border border-neutral-200 rounded-lg bg-neutral-50 flex flex-col overflow-hidden">
-          <div className="p-3 border-b border-neutral-200 bg-white flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-neutral-600">Preview</h4>
-            <div className="flex items-center gap-2 text-xs text-neutral-500">
-              Page {selectedPage + 1} of {Math.min(pages.length, 5)}
-            </div>
+        <div className="flex-1 border border-[#E4E4E7] rounded-lg bg-[#F4F4F5] flex flex-col overflow-hidden min-h-0">
+          <div className="p-3 border-b border-[#E4E4E7] bg-white flex items-center justify-between">
+            <span className="text-[#3F3F46] text-xs font-semibold leading-4">Preview</span>
+            <span className="text-[#3F3F46] text-xs font-semibold leading-4">
+              {selectedPage + 1} of {totalPages} pages
+            </span>
           </div>
           <div className="flex-1 overflow-auto p-6 flex items-center justify-center">
-            <div className="bg-white shadow-xl p-8 w-full max-w-md aspect-[8.5/11] border-2 border-neutral-200">
+            <div className="bg-white shadow-xl p-8 w-full max-w-md aspect-[8.5/11] border border-[#E4E4E7] rounded-lg">
               <div className="text-center space-y-4">
-                <h1 className="text-2xl font-bold text-neutral-900">INSPECTION REPORT</h1>
-                <p className="text-lg font-semibold text-blue-600">{config.details.projectName}</p>
-                <div className="text-sm text-neutral-600 space-y-1 mt-6">
-                  <p>Prepared by: {config.details.preparedBy}</p>
-                  <p>Date: {new Date(config.details.reportDate).toLocaleDateString()}</p>
+                <h1 className="text-[#09090B] text-[32px] font-bold leading-[48px]" style={titillium}>
+                  INSPECTION REPORT
+                </h1>
+                <p className="text-[#336099] text-[28px] font-semibold leading-9" style={titillium}>
+                  {config.details.projectName || 'Project Name'}
+                </p>
+                <div className="space-y-1 mt-6">
+                  <p className="text-[#3F3F46] text-lg font-medium leading-7">
+                    Prepared by: {config.details.preparedBy || '—'}
+                  </p>
+                  <p className="text-[#3F3F46] text-lg font-medium leading-7">
+                    Date: {config.details.reportDate ? new Date(config.details.reportDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }).replace(/\//g, '.') : '—'}
+                  </p>
                 </div>
-                <div className="text-sm font-medium mt-8 pt-6 border-t border-neutral-200">
-                  <p className="text-neutral-700">{assetCount} Assets Inspected</p>
-                  <p className="text-neutral-700">{totalPages} Pages</p>
+                <div className="mt-8 pt-6 border-t border-[#E4E4E7] space-y-1">
+                  <p className="text-[#09090B] text-lg font-medium leading-7">
+                    {assetCount} assets inspected
+                  </p>
+                  <p className="text-[#09090B] text-lg font-medium leading-7">
+                    {totalPages} pages
+                  </p>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Sections Checklist */}
-        <div className="w-80 border border-neutral-200 rounded-lg overflow-hidden flex flex-col bg-white">
-          <div className="p-3 border-b border-neutral-200 bg-neutral-50">
-            <h4 className="text-xs font-semibold text-neutral-700">Sections Included</h4>
-          </div>
-          <div className="flex-1 overflow-auto p-3 space-y-2">
-            {sectionsChecklist.map((section) => (
-              <label
-                key={section.key}
-                className="flex items-start gap-2 p-2 rounded hover:bg-neutral-50 cursor-pointer"
-              >
-                <Checkbox
-                  checked={section.included}
-                  onCheckedChange={() => toggleSection(section.key)}
-                  className="mt-0.5"
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-neutral-900">{section.name}</p>
-                  {section.itemCount !== undefined && (
-                    <p className="text-xs text-neutral-500">
-                      {section.itemCount} {section.itemCount === 1 ? 'item' : 'items'}
-                    </p>
-                  )}
-                </div>
-              </label>
-            ))}
-            
-            {/* Optional sections that can be added */}
-            {!config.sections.projectInformation && (
-              <button
-                onClick={() => toggleSection('projectInformation')}
-                className="w-full text-left p-2 rounded hover:bg-neutral-50 text-sm text-neutral-500 flex items-center gap-2"
-              >
-                <span className="text-xs">+</span>
-                <span>Add Project Information</span>
-              </button>
-            )}
-          </div>
-          <div className="p-3 border-t border-neutral-200 bg-neutral-50 text-xs text-neutral-600">
-            <p>File size: {getEstimatedFileSize()}</p>
           </div>
         </div>
       </div>
@@ -1465,7 +1132,7 @@ function Step3Preview({
   );
 }
 
-// Step 4 Generating Component
+// Step 4 Generating Component (Figma: Generating Report)
 function Step4Generating({ 
   progress, 
   currentPage, 
@@ -1475,160 +1142,101 @@ function Step4Generating({
   currentPage: number; 
   totalPages: number; 
 }) {
-  const steps = [
-    { label: 'Preparing data', completed: progress > 10 },
-    { label: 'Generating cover page', completed: progress > 20 },
-    { label: 'Creating executive summary', completed: progress > 35 },
-    { label: 'Rendering map overview', completed: progress > 50 },
-    { label: 'Processing inspection details', completed: progress > 70 },
-    { label: 'Compiling PDF', completed: progress > 85 },
-    { label: 'Finalizing document', completed: progress > 95 },
-  ];
-
-  const currentStepIndex = steps.findIndex(s => !s.completed);
+  const estimatedSeconds = Math.ceil((100 - progress) / 5);
 
   return (
-    <div className="space-y-6 py-8">
-      <div className="text-center">
-        <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold">Generating Report...</h3>
-      </div>
+    <div className="space-y-6">
+      <h3 className="text-[#09090B] text-lg font-semibold leading-7">
+        Generating Report
+      </h3>
 
-      <Progress value={progress} className="h-3" />
+      <Progress value={progress} className="h-3 bg-[#F4F4F5]" />
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-          <p className="text-xs text-neutral-600 mb-1">Status</p>
-          <p className="text-sm font-semibold text-blue-700">Rendering pages</p>
+      <div className="grid grid-cols-1 gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-[#18181B] text-sm font-medium leading-5">Status:</span>
+          <span className="text-[#18181B] text-base font-semibold leading-6">Rendering pages</span>
         </div>
-        <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-          <p className="text-xs text-neutral-600 mb-1">Progress</p>
-          <p className="text-sm font-semibold text-green-700">
+        <div className="flex flex-col gap-1">
+          <span className="text-[#18181B] text-sm font-medium leading-5">Progress:</span>
+          <span className="text-[#18181B] text-base font-semibold leading-6">
             {currentPage} of {totalPages} pages
-          </p>
+          </span>
         </div>
-        <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
-          <p className="text-xs text-neutral-600 mb-1">Estimated Time</p>
-          <p className="text-sm font-semibold text-orange-700">~{Math.ceil((100 - progress) / 5)}s</p>
-        </div>
-        <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-          <p className="text-xs text-neutral-600 mb-1">Speed</p>
-          <p className="text-sm font-semibold text-purple-700">
-            {progress > 0 ? (currentPage / ((100 - progress) / 5)).toFixed(1) : '0'} pages/sec
-          </p>
-        </div>
-      </div>
-
-      <div className="h-px bg-neutral-200" />
-
-      <div className="space-y-3">
-        <p className="text-sm font-semibold">Current Step:</p>
-        <div className="space-y-2">
-          {steps.map((step, index) => {
-            const isCompleted = step.completed;
-            const isActive = index === currentStepIndex;
-            
-            return (
-              <div
-                key={index}
-                className={`flex items-center gap-3 p-2 rounded-lg transition-all ${
-                  isActive ? 'bg-blue-50 border border-blue-200' : ''
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                  isCompleted
-                    ? 'bg-green-100 text-green-700'
-                    : isActive
-                    ? 'bg-blue-100 text-blue-700 animate-pulse'
-                    : 'bg-neutral-100 text-neutral-400'
-                }`}>
-                  {isCompleted ? '✓' : isActive ? '→' : '⋯'}
-                </div>
-                <span className={`text-sm ${isCompleted ? 'text-neutral-900 font-medium' : isActive ? 'text-blue-700 font-medium' : 'text-neutral-500'}`}>
-                  {step.label}
-                </span>
-                {isActive && (
-                  <div className="ml-auto">
-                    <div className="w-16 h-1.5 bg-blue-200 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 rounded-full animate-pulse" style={{ width: '60%' }} />
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className="flex flex-col gap-1">
+          <span className="text-[#18181B] text-sm font-medium leading-5">Estimated time:</span>
+          <span className="text-[#18181B] text-base font-semibold leading-6">
+            ~{estimatedSeconds} seconds
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-// Step 4 Success Component
-function Step4Success({ 
-  report, 
-  onDownload 
-}: { 
-  report: { filename: string; pages: number; size: string; duration: number }; 
-  onDownload: () => void; 
+// Step 4 Success Component (Figma: success state)
+function Step4Success({
+  report,
+  onDownload,
+}: {
+  report: { filename: string; pages: number; size: string; duration: number };
+  onDownload: () => void;
 }) {
-  return (
-    <div className="space-y-6 py-8">
-      <div className="text-center">
-        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 className="w-8 h-8 text-green-600" />
-        </div>
-        <h3 className="text-lg font-semibold">Report Generated Successfully</h3>
-        <p className="text-sm text-neutral-600 mt-2">Your inspection report is ready</p>
-      </div>
+  const titillium = { fontFamily: 'var(--font-titillium), sans-serif' };
 
-      <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          <FileText className="w-6 h-6 text-blue-600 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-medium">{report.filename}</p>
-            <p className="text-sm text-neutral-600">
-              {report.pages} pages, {report.size}
-            </p>
-            <p className="text-xs text-neutral-500 mt-1">
-              ⏱️ Generated in {report.duration} seconds
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 className="text-[#09090B] text-lg font-semibold leading-7">
+        Generating Report
+      </h3>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col items-center gap-6">
+          <div className="p-4 rounded-full bg-[#DCFCE7] flex items-center justify-center w-[80px] h-[80px]">
+            <CheckCircle2 className="w-12 h-12 text-[#15803D]" />
+          </div>
+          <div className="flex flex-col items-center gap-2 w-full">
+            <h4
+              className="text-center text-black text-xl font-semibold leading-7 w-full"
+              style={titillium}
+            >
+              Report Generated Successfully
+            </h4>
+            <p className="text-center text-black text-sm font-normal leading-5">
+              Your inspection report is ready
             </p>
           </div>
         </div>
 
-        <div className="h-px bg-neutral-200" />
-
-        <div className="text-sm">
-          <p className="font-medium mb-2">📁 Contains:</p>
-          <ul className="space-y-1 text-neutral-600">
-            <li>• Cover page and executive summary</li>
-            <li>• Map overview with assets</li>
-            <li>• Asset list table</li>
-            <li>• Detailed inspection pages</li>
-            <li>• PACP compliance data</li>
-          </ul>
+        <div className="px-4 py-3 rounded-lg border border-[#E4E4E7] flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <FileText className="w-5 h-5 shrink-0 text-[#E86F25]" />
+            <div className="flex flex-col min-w-0">
+              <span className="text-[#18181B] text-base font-semibold leading-6">
+                {report.filename}
+              </span>
+              <span className="text-[#18181B] text-sm font-medium leading-5">
+                {report.pages} pages, {report.size}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex gap-3 justify-center">
-          <Button variant="outline" onClick={onDownload} className="flex-1">
-            <Download className="w-4 h-4 mr-2" />
-            Download
-          </Button>
-          <Button onClick={onDownload} className="flex-1">
-            <Eye className="w-4 h-4 mr-2" />
-            Open
-          </Button>
-          <Button variant="outline" onClick={onDownload} className="px-3">
-            <Share2 className="w-4 h-4" />
-          </Button>
-        </div>
-        <div className="flex gap-2 justify-center">
-          <Button variant="ghost" size="sm" onClick={onDownload}>
-            <RotateCcw className="w-4 h-4 mr-2" />
-            Generate Another
-          </Button>
-        </div>
+      <div className="flex justify-end gap-2 pt-0">
+        <Button
+          variant="outline"
+          onClick={onDownload}
+          className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium leading-5"
+        >
+          Open
+        </Button>
+        <Button
+          onClick={onDownload}
+          className="h-10 px-4 rounded-lg bg-[#E86F25] text-[#FAFAFA] text-sm font-medium leading-5 hover:bg-[#d66320]"
+        >
+          Download Report
+        </Button>
       </div>
     </div>
   );

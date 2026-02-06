@@ -16,6 +16,7 @@ import type { Asset } from '@/lib/types/asset-list';
 interface ActionsColumnProps {
   asset: Asset;
   isEditing?: boolean;
+  showShadowLeft?: boolean;
   onViewDetails: (asset: Asset) => void;
   onEdit: (asset: Asset) => void;
   onDuplicate: (asset: Asset) => void;
@@ -24,14 +25,17 @@ interface ActionsColumnProps {
   onCancel?: () => void;
 }
 
-export function ActionsColumnHeader() {
+const STICKY_SHADOW_LEFT = '-4px 0 29px 0 rgba(100, 100, 111, 0.2)';
+
+export function ActionsColumnHeader({ showShadowLeft = false }: { showShadowLeft?: boolean }) {
   return (
     <TableHead
-      className="sticky right-0 z-20 w-[90px] bg-white border-l border-neutral-200 shadow-[inset_4px_0_6px_-2px_rgba(0,0,0,0.05)] px-2"
+      className="sticky right-0 z-20 w-[90px] px-4 py-4 bg-[#FAFAFA] border-b border-[#E4E4E7] border-l border-[#E4E4E7]"
+      style={showShadowLeft ? { boxShadow: STICKY_SHADOW_LEFT } : undefined}
       scope="col"
       aria-label="Actions"
     >
-      <div className="w-full h-full" />
+      <div className="w-full h-full min-h-[51px]" />
     </TableHead>
   );
 }
@@ -39,6 +43,7 @@ export function ActionsColumnHeader() {
 export function ActionsColumnCell({
   asset,
   isEditing = false,
+  showShadowLeft = false,
   onViewDetails,
   onEdit,
   onDuplicate,
@@ -50,7 +55,8 @@ export function ActionsColumnCell({
 
   return (
     <TableCell
-      className="sticky right-0 z-10 w-[90px] bg-white border-l border-neutral-200 shadow-[inset_4px_0_6px_-2px_rgba(0,0,0,0.05)] px-2"
+      className="sticky right-0 z-10 w-[90px] p-4 min-h-[72px] bg-white border-l border-[#E4E4E7]"
+      style={showShadowLeft ? { boxShadow: STICKY_SHADOW_LEFT } : undefined}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="flex items-center justify-center gap-2 w-full">
@@ -61,7 +67,7 @@ export function ActionsColumnCell({
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="h-10 w-10 rounded-lg text-[#312C29] hover:bg-gray-100 transition-colors"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -79,7 +85,7 @@ export function ActionsColumnCell({
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="h-10 w-10 rounded-lg text-[#312C29] hover:bg-gray-100 transition-colors"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -100,7 +106,7 @@ export function ActionsColumnCell({
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+              className="h-10 w-10 rounded-lg text-[#312C29] hover:bg-gray-100 transition-colors"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -118,7 +124,7 @@ export function ActionsColumnCell({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                  className="h-10 w-10 rounded-lg text-[#312C29] hover:bg-gray-100 transition-colors"
                   onClick={(e) => e.stopPropagation()}
                   aria-label={`More actions for ${asset.pipeSegment || asset.id}`}
                   title="More actions"

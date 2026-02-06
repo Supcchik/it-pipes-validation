@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, X, Settings2 } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import type { Asset, AssetType } from '@/lib/types/asset-list';
 
 interface SearchBarProps {
   assets: Asset[];
   onFilteredResults: (assets: Asset[] | null) => void; // null = no search, [] = no results, [assets] = results
-  onOpenAdvancedSearch: () => void;
   assetType?: AssetType; // Active asset type
 }
 
@@ -40,11 +39,10 @@ const getPlaceholder = (assetType: AssetType): string => {
   }
 };
 
-export default function SearchBar({ 
-  assets, 
-  onFilteredResults, 
-  onOpenAdvancedSearch,
-  assetType = 'ML'
+export default function SearchBar({
+  assets,
+  onFilteredResults,
+  assetType = 'ML',
 }: SearchBarProps) {
   const [query, setQuery] = useState('');
 
@@ -99,9 +97,9 @@ export default function SearchBar({
   }, [filtered, query]); // onFilteredResults is stable, no need to include
 
   return (
-    <div className="relative w-96">
+    <div className="relative w-[360px]">
       {/* Search icon (left) */}
-      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#09090B] pointer-events-none" />
       
       {/* Input */}
       <Input
@@ -109,35 +107,21 @@ export default function SearchBar({
         placeholder={getPlaceholder(assetType)}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="pl-10 pr-20 h-9"
+        className="pl-10 pr-10 min-h-9 py-2.5 rounded-md border border-[#E4E4E7] bg-white placeholder:text-[#71717A] text-sm"
         aria-label="Search assets"
       />
 
-      {/* Right side icons */}
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-        {/* Clear button (only when has text) */}
-        {query && (
-          <button
-            onClick={() => setQuery('')}
-            className="p-1 hover:bg-neutral-100 rounded transition-colors"
-            aria-label="Clear search"
-            type="button"
-          >
-            <X className="w-4 h-4 text-neutral-400 hover:text-neutral-600" />
-          </button>
-        )}
-        
-        {/* Advanced search button (always visible) */}
+      {/* Clear button (only when has text) */}
+      {query && (
         <button
-          onClick={onOpenAdvancedSearch}
-          className="p-1 hover:bg-neutral-100 rounded transition-colors"
-          title="Advanced search"
-          aria-label="Open advanced search"
+          onClick={() => setQuery('')}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-100 rounded transition-colors"
+          aria-label="Clear search"
           type="button"
         >
-          <Settings2 className="w-4 h-4 text-neutral-400 hover:text-neutral-600" />
+          <X className="w-4 h-4 text-neutral-400 hover:text-neutral-600" />
         </button>
-      </div>
+      )}
     </div>
   );
 }

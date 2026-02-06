@@ -1,16 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
@@ -20,7 +16,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import type { Asset } from '@/lib/types/asset-list';
+
+const COPY_OPTIONS = [
+  { key: 'inspectionData' as const, title: 'Inspection data', description: 'Pipe segments, dates' },
+  { key: 'observations' as const, title: 'Observations', description: 'Defects, codes' },
+  { key: 'mediaFiles' as const, title: 'Media files', description: 'Inspection images and recordings' },
+  { key: 'copyAssignments' as const, title: 'Assigments', description: 'User assignments and workflow status' },
+];
 
 interface CopyToProjectDialogProps {
   open: boolean;
@@ -46,9 +50,7 @@ export default function CopyToProjectDialog({
     inspectionData: true,
     observations: true,
     mediaFiles: true,
-    copyTimestamps: true,
     copyAssignments: false,
-    linkToOriginal: false,
   });
   const [copying, setCopying] = useState(false);
   const [copyComplete, setCopyComplete] = useState(false);
@@ -128,26 +130,29 @@ export default function CopyToProjectDialog({
     );
   }
 
-  // Main Dialog
+  const toggleOption = (key: keyof typeof options) => {
+    setOptions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Main Dialog — стилі з Figma
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Copy className="w-5 h-5 text-blue-600" />
-            Copy to Project
-          </DialogTitle>
-          <DialogDescription>
-            Copy {selectedAssets.length} assets to another project
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        className="sm:max-w-xl p-6 gap-4 rounded-2xl border border-[#E4E4E7] shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)] overflow-hidden flex flex-col"
+        style={{ fontFamily: 'Montserrat, sans-serif' }}
+      >
+        <DialogTitle className="text-[18px] font-semibold leading-7 text-[#09090B] m-0">
+          Copy to Project
+        </DialogTitle>
 
-        <div className="space-y-6 py-4">
-          {/* Destination Project */}
-          <div className="space-y-2">
-            <Label>Destination Project</Label>
+        <div className="flex flex-col gap-4">
+          {/* Destination project */}
+          <div className="flex flex-col gap-3">
+            <span className="text-sm font-semibold leading-5 text-[#3F3F46]">
+              Destination project
+            </span>
             <Select value={destinationProject} onValueChange={setDestinationProject}>
-              <SelectTrigger>
+              <SelectTrigger className="min-h-9 h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm placeholder:text-[#71717A]">
                 <SelectValue placeholder="Select project..." />
               </SelectTrigger>
               <SelectContent>
@@ -161,114 +166,102 @@ export default function CopyToProjectDialog({
             </Select>
           </div>
 
-          <div className="h-px bg-neutral-200" />
+          <div className="h-px self-stretch bg-[#E4E4E7]" />
 
-          {/* Copy Options */}
-          <div className="space-y-3">
-            <Label className="text-sm font-semibold">Copy Options</Label>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="copy-data"
-                  checked={options.inspectionData}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, inspectionData: checked as boolean })
-                  }
-                />
-                <Label htmlFor="copy-data" className="font-normal cursor-pointer">
-                  Copy inspection data
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="copy-obs"
-                  checked={options.observations}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, observations: checked as boolean })
-                  }
-                />
-                <Label htmlFor="copy-obs" className="font-normal cursor-pointer">
-                  Copy observations
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="copy-media"
-                  checked={options.mediaFiles}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, mediaFiles: checked as boolean })
-                  }
-                />
-                <Label htmlFor="copy-media" className="font-normal cursor-pointer">
-                  Copy media files
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="copy-time"
-                  checked={options.copyTimestamps}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, copyTimestamps: checked as boolean })
-                  }
-                />
-                <Label htmlFor="copy-time" className="font-normal cursor-pointer">
-                  Copy timestamps
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="copy-assign"
-                  checked={options.copyAssignments}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, copyAssignments: checked as boolean })
-                  }
-                />
-                <Label htmlFor="copy-assign" className="font-normal cursor-pointer">
-                  Copy assignments
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="copy-link"
-                  checked={options.linkToOriginal}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, linkToOriginal: checked as boolean })
-                  }
-                />
-                <Label htmlFor="copy-link" className="font-normal cursor-pointer">
-                  Link to original (reference only)
-                </Label>
-              </div>
+          {/* Copy options — картки як у Figma */}
+          <div className="flex flex-col gap-3">
+            <span className="text-sm font-semibold leading-5 text-[#3F3F46]">
+              Copy options
+            </span>
+            <div className="flex flex-col gap-3">
+              {COPY_OPTIONS.map(({ key, title, description }) => {
+                const checked = options[key];
+                return (
+                  <div
+                    key={key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleOption(key)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleOption(key);
+                      }
+                    }}
+                    className={cn(
+                      'flex items-center gap-3 min-h-[84px] px-4 py-2 rounded-lg border text-left transition-colors cursor-pointer',
+                      checked
+                        ? 'bg-[#FFEDD5] border-[#E86F25]'
+                        : 'bg-white border-[#E4E4E7] hover:bg-neutral-50'
+                    )}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggleOption(key)}
+                      onClick={e => e.stopPropagation()}
+                      className={cn(
+                        'h-4 w-4 rounded border-2',
+                        checked ? 'border-[#E86F25] bg-[#E86F25]' : 'border-[#E4E4E7]'
+                      )}
+                    />
+                    <div className="flex flex-1 flex-col gap-1">
+                      <span
+                        className={cn(
+                          'text-base font-semibold leading-6',
+                          checked ? 'text-[#E86F25]' : 'text-[#18181B]'
+                        )}
+                      >
+                        {title}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-sm font-medium leading-5',
+                          checked ? 'text-[#E86F25]' : 'text-[#18181B]'
+                        )}
+                      >
+                        {description}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Info */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-sm text-blue-900">
-              💡 <strong>Info:</strong> Assets will remain in current project.
-              Copies will be independent duplicates.
+          <div className="h-px self-stretch bg-[#E4E4E7]" />
+
+          {/* Info — sky blue блок */}
+          <div className="flex items-start gap-2 px-4 py-2.5 rounded-lg bg-[#E0F2FE] border border-[#7DD3FC]">
+            <Info className="w-4 h-4 shrink-0 text-[#0284C7] mt-0.5" />
+            <p className="text-sm font-normal leading-5 text-[#0284C7]">
+              Assets will remain in current project. Copies will be independent duplicates.
             </p>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+        <div className="flex justify-end gap-2 pt-0">
+          <Button
+            variant="outline"
+            onClick={handleClose}
+            className="h-10 px-4 py-2 rounded-lg border-[#E4E4E7] text-sm font-medium text-[#312C29] hover:bg-neutral-50"
+          >
             Cancel
           </Button>
-          <Button onClick={handleCopy} disabled={!destinationProject || copying}>
-            <Copy className="w-4 h-4 mr-2" />
-            {copying ? 'Copying...' : 'Copy Assets →'}
+          <Button
+            onClick={handleCopy}
+            disabled={!destinationProject || copying}
+            className="h-10 px-4 py-2 rounded-lg bg-[#E86F25] text-sm font-medium text-[#FAFAFA] hover:bg-[#d65a1a] disabled:opacity-50"
+          >
+            {copying ? 'Copying...' : 'Copy to project'}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
+
+
+
 
 
 

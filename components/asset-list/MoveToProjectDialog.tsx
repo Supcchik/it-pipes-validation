@@ -1,16 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { MoveRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
@@ -20,7 +16,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import type { Asset } from '@/lib/types/asset-list';
+
+const MOVE_OPTIONS = [
+  { key: 'inspectionData' as const, title: 'Inspection data', description: 'Pipe segments, dates' },
+  { key: 'observations' as const, title: 'Observations', description: 'Defects, codes' },
+  { key: 'mediaFiles' as const, title: 'Media files', description: 'Inspection images and recordings' },
+  { key: 'moveAssignments' as const, title: 'Assigments', description: 'User assignments and workflow status' },
+];
 
 interface MoveToProjectDialogProps {
   open: boolean;
@@ -55,22 +59,20 @@ export default function MoveToProjectDialog({
     inspectionData: true,
     observations: true,
     mediaFiles: true,
-    preserveTimestamps: true,
     moveAssignments: false,
   });
-  const [showConfirm, setShowConfirm] = useState(false);
   const [moving, setMoving] = useState(false);
   const [moveComplete, setMoveComplete] = useState(false);
 
-  const handleMove = () => {
+  const toggleOption = (key: keyof typeof options) => {
+    setOptions(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleMove = async () => {
     if (!destinationProject) {
       alert('Please select a destination project');
       return;
     }
-    setShowConfirm(true);
-  };
-
-  const handleConfirmMove = async () => {
     setMoving(true);
 
     try {
@@ -89,7 +91,6 @@ export default function MoveToProjectDialog({
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       setMoving(false);
-      setShowConfirm(false);
       setMoveComplete(true);
       onMoveComplete();
     } catch (error) {
@@ -100,7 +101,6 @@ export default function MoveToProjectDialog({
   };
 
   const handleClose = () => {
-    setShowConfirm(false);
     setMoveComplete(false);
     setDestinationProject('');
     onClose();
@@ -112,107 +112,46 @@ export default function MoveToProjectDialog({
   if (moveComplete) {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-              Assets Moved Successfully
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="py-4">
-            <p className="text-sm text-neutral-700">
-              {selectedAssets.length} assets moved to {selectedProject?.name}
-            </p>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleClose}>
+        <DialogContent className="sm:max-w-md p-6 gap-4 rounded-2xl border border-[#E4E4E7] shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)] flex flex-col">
+          <DialogTitle className="flex items-center gap-2 text-[18px] font-semibold leading-7 text-[#09090B] m-0">
+            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            Assets Moved Successfully
+          </DialogTitle>
+          <p className="text-sm text-[#3F3F46]">
+            {selectedAssets.length} assets moved to {selectedProject?.name}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={handleClose} className="h-10 px-4 py-2 rounded-lg border-[#E4E4E7] text-[#312C29]">
               Close
             </Button>
-            <Button onClick={() => {
-              // TODO: Navigate to destination project
-              handleClose();
-            }}>
+            <Button onClick={handleClose} className="h-10 px-4 py-2 rounded-lg bg-[#E86F25] text-[#FAFAFA]">
               View in {selectedProject?.name}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  // Confirmation State
-  if (showConfirm) {
-    return (
-      <Dialog open={open} onOpenChange={() => setShowConfirm(false)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-orange-600" />
-              </div>
-              <div>
-                <DialogTitle>Confirm Move</DialogTitle>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-neutral-700">
-              You are about to move <strong>{selectedAssets.length} assets</strong> from{' '}
-              <strong>&quot;{currentProject}&quot;</strong> to <strong>&quot;{selectedProject?.name}&quot;</strong>
-            </p>
-
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-              <p className="text-sm font-medium text-orange-900 mb-2">
-                These assets will be:
-              </p>
-              <ul className="text-sm text-orange-800 space-y-1">
-                <li>• Removed from {currentProject}</li>
-                <li>• Added to {selectedProject?.name}</li>
-                <li>• Keep all data and media</li>
-              </ul>
-            </div>
-
-            <p className="text-sm text-neutral-600">
-              ⚠️ This action cannot be undone.
-            </p>
           </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfirm(false)} disabled={moving}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmMove} disabled={moving}>
-              {moving ? 'Moving...' : 'Confirm Move'}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     );
   }
 
-  // Main Dialog
+  // Main Dialog — стилі з Figma
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MoveRight className="w-5 h-5 text-blue-600" />
-            Move to Project
-          </DialogTitle>
-          <DialogDescription>
-            Move {selectedAssets.length} assets to another project
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        className="sm:max-w-xl p-6 gap-4 rounded-2xl border border-[#E4E4E7] shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)] overflow-hidden flex flex-col"
+        style={{ fontFamily: 'Montserrat, sans-serif' }}
+      >
+        <DialogTitle className="text-[18px] font-semibold leading-7 text-[#09090B] m-0">
+          Move to Project
+        </DialogTitle>
 
-        <div className="space-y-6 py-4">
-          {/* Destination Project */}
-          <div className="space-y-2">
-            <Label>Destination Project</Label>
+        <div className="flex flex-col gap-4">
+          {/* Destination project */}
+          <div className="flex flex-col gap-3">
+            <span className="text-sm font-semibold leading-5 text-[#3F3F46]">
+              Destination project
+            </span>
             <Select value={destinationProject} onValueChange={setDestinationProject}>
-              <SelectTrigger>
+              <SelectTrigger className="min-h-9 h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm placeholder:text-[#71717A]">
                 <SelectValue placeholder="Select project..." />
               </SelectTrigger>
               <SelectContent>
@@ -226,97 +165,96 @@ export default function MoveToProjectDialog({
             </Select>
           </div>
 
-          <div className="h-px bg-neutral-200" />
+          <div className="h-px self-stretch bg-[#E4E4E7]" />
 
-          {/* Transfer Options */}
-          <div className="space-y-3">
-            <Label className="text-sm font-semibold">Transfer Options</Label>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="opt-data"
-                  checked={options.inspectionData}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, inspectionData: checked as boolean })
-                  }
-                />
-                <Label htmlFor="opt-data" className="font-normal cursor-pointer">
-                  Move inspection data
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="opt-obs"
-                  checked={options.observations}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, observations: checked as boolean })
-                  }
-                />
-                <Label htmlFor="opt-obs" className="font-normal cursor-pointer">
-                  Move observations
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="opt-media"
-                  checked={options.mediaFiles}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, mediaFiles: checked as boolean })
-                  }
-                />
-                <Label htmlFor="opt-media" className="font-normal cursor-pointer">
-                  Move media files
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="opt-time"
-                  checked={options.preserveTimestamps}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, preserveTimestamps: checked as boolean })
-                  }
-                />
-                <Label htmlFor="opt-time" className="font-normal cursor-pointer">
-                  Preserve timestamps
-                </Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="opt-assign"
-                  checked={options.moveAssignments}
-                  onCheckedChange={(checked) =>
-                    setOptions({ ...options, moveAssignments: checked as boolean })
-                  }
-                />
-                <Label htmlFor="opt-assign" className="font-normal cursor-pointer">
-                  Move assignments
-                </Label>
-              </div>
+          {/* Move options — картки як у Figma */}
+          <div className="flex flex-col gap-3">
+            <span className="text-sm font-semibold leading-5 text-[#3F3F46]">
+              Move options
+            </span>
+            <div className="flex flex-col gap-3">
+              {MOVE_OPTIONS.map(({ key, title, description }) => {
+                const checked = options[key];
+                return (
+                  <div
+                    key={key}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleOption(key)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleOption(key);
+                      }
+                    }}
+                    className={cn(
+                      'flex items-center gap-3 min-h-[84px] px-4 py-2 rounded-lg border text-left transition-colors cursor-pointer',
+                      checked
+                        ? 'bg-[#FFEDD5] border-[#E86F25]'
+                        : 'bg-white border-[#E4E4E7] hover:bg-neutral-50'
+                    )}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggleOption(key)}
+                      onClick={e => e.stopPropagation()}
+                      className={cn(
+                        'h-4 w-4 rounded border-2',
+                        checked ? 'border-[#E86F25] bg-[#E86F25]' : 'border-[#E4E4E7]'
+                      )}
+                    />
+                    <div className="flex flex-1 flex-col gap-1">
+                      <span
+                        className={cn(
+                          'text-base font-semibold leading-6',
+                          checked ? 'text-[#E86F25]' : 'text-[#18181B]'
+                        )}
+                      >
+                        {title}
+                      </span>
+                      <span
+                        className={cn(
+                          'text-sm font-medium leading-5',
+                          checked ? 'text-[#E86F25]' : 'text-[#18181B]'
+                        )}
+                      >
+                        {description}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Warning */}
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-            <p className="text-sm text-orange-900">
-              ⚠️ <strong>Warning:</strong> Assets will be removed from current project.
-              This action cannot be undone.
+          <div className="h-px self-stretch bg-[#E4E4E7]" />
+
+          {/* Warning — amber блок з Figma */}
+          <div className="flex items-start gap-2 px-4 py-2.5 rounded-lg bg-[#FEF3C7] border border-[#F59E0B]">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-[#C2410C] mt-0.5" />
+            <p className="text-sm font-normal leading-5 text-[#B45309]">
+              Assets will be removed from current project. This action cannot be undone.
             </p>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+        <div className="flex justify-end gap-2 pt-0">
+          <Button
+            variant="outline"
+            onClick={handleClose}
+            disabled={moving}
+            className="h-10 px-4 py-2 rounded-lg border-[#E4E4E7] text-sm font-medium text-[#312C29] hover:bg-neutral-50"
+          >
             Cancel
           </Button>
-          <Button onClick={handleMove} disabled={!destinationProject}>
-            <MoveRight className="w-4 h-4 mr-2" />
-            Move Assets →
+          <Button
+            onClick={handleMove}
+            disabled={!destinationProject || moving}
+            className="h-10 px-4 py-2 rounded-lg bg-[#E86F25] text-sm font-medium text-[#FAFAFA] hover:bg-[#d65a1a] disabled:opacity-50"
+          >
+            {moving ? 'Moving...' : 'Move to project'}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

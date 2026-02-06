@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Star, Plus, MoreHorizontal } from 'lucide-react';
+import { Plus, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { View } from '@/lib/types/asset-list';
 
@@ -25,82 +25,84 @@ export default function ViewTabs({
   activeViewId,
   onViewChange,
   onCreateView,
-  onManageViews
+  onManageViews,
 }: ViewTabsProps) {
-  // Get favorite views (max 5)
   const favoriteViews = views
-    .filter(v => v.isFavorite)
+    .filter((v) => v.isFavorite)
     .slice(0, 5);
 
-  // Get other views (not in favorites or beyond 5)
   const otherViews = views.filter(
-    v => !v.isFavorite || !favoriteViews.includes(v)
+    (v) => !v.isFavorite || !favoriteViews.includes(v)
   );
 
   return (
-    <div className="h-12 bg-neutral-50 border-b border-neutral-200 flex items-center gap-1 px-4">
-      {/* Favorite Views Tabs */}
-      {favoriteViews.map((view) => (
-        <button
-          key={view.id}
-          onClick={() => onViewChange(view.id)}
-          className={cn(
-            'h-full px-4 flex items-center gap-2 text-sm transition-colors',
-            'border-b-2',
-            activeViewId === view.id
-              ? 'bg-white border-orange-500 text-orange-600 font-medium'
-              : 'bg-transparent border-transparent text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100'
-          )}
-        >
-          <Star className={cn(
-            'w-4 h-4',
-            activeViewId === view.id ? 'fill-orange-500 text-orange-500' : 'text-neutral-400'
-          )} />
-          {view.name}
-        </button>
-      ))}
-
-      {/* More Dropdown */}
-      {otherViews.length > 0 && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-10 px-3 text-neutral-600 hover:text-neutral-900"
-            >
-              <MoreHorizontal className="h-4 w-4 mr-1" />
-              More ({otherViews.length})
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            {otherViews.map((view) => (
-              <DropdownMenuItem
-                key={view.id}
-                onClick={() => onViewChange(view.id)}
-                className="flex items-center gap-2"
-              >
-                <Star className="w-4 h-4 text-neutral-400" />
-                {view.name}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onManageViews}>
-              Manage Views...
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <div
+      className={cn(
+        'flex items-center justify-between px-6 py-2 bg-white',
+        'border-b border-[#E4E4E7]'
       )}
+    >
+      {/* Ліва частина: пілюлі вʼю + More */}
+      <div className="flex items-center gap-3">
+        {favoriteViews.map((view) => {
+          const isActive = activeViewId === view.id;
+          return (
+            <button
+              key={view.id}
+              type="button"
+              onClick={() => onViewChange(view.id)}
+              className={cn(
+                'h-10 px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors',
+                isActive
+                  ? 'bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold'
+                  : 'bg-white border border-[#E4E4E7] text-[#18181B] font-medium hover:bg-neutral-50'
+              )}
+            >
+              {view.name}
+            </button>
+          );
+        })}
 
-      {/* New View Button */}
-      <div className="ml-auto">
+        {/* More (N) — ghost-кнопка з шевроном */}
+        {otherViews.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-10 px-4 py-2 rounded-lg text-[#3F3F46] font-medium hover:bg-neutral-100 hover:text-[#18181B] gap-2"
+              >
+                More ({otherViews.length})
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              {otherViews.map((view) => (
+                <DropdownMenuItem
+                  key={view.id}
+                  onClick={() => onViewChange(view.id)}
+                >
+                  {view.name}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onManageViews}>
+                Manage Views...
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+
+      {/* Права частина: New View */}
+      <div className="flex items-center gap-4">
         <Button
           variant="ghost"
           size="sm"
           onClick={onCreateView}
-          className="h-10 px-3 text-neutral-600 hover:text-neutral-900"
+          className="h-10 px-4 py-2 rounded-lg text-[#312C29] font-medium hover:bg-neutral-100 gap-2"
         >
-          <Plus className="h-4 w-4 mr-1" />
+          <Plus className="h-4 w-4" />
           New View
         </Button>
       </div>

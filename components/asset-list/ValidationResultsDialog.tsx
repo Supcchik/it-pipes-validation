@@ -1,15 +1,14 @@
 'use client';
 
-import { CheckCircle2, Download, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 export interface ValidationResults {
   total: number;
@@ -38,75 +37,91 @@ export default function ValidationResultsDialog({
   const passedPercentage = Math.round((results.passed / results.total) * 100);
   const failedPercentage = Math.round((results.failed / results.total) * 100);
 
+  const statRow = (label: string, value: React.ReactNode, valueClassName?: string) => (
+    <div className="flex justify-between items-center w-full">
+      <span className="text-[#18181B] text-sm font-medium leading-5">{label}</span>
+      <span className={cn('text-[#18181B] text-base font-semibold leading-6', valueClassName)}>
+        {value}
+      </span>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
+      <DialogContent
+        className={cn(
+          'sm:max-w-xl p-6 flex flex-col gap-4 rounded-2xl border-[#E4E4E7] overflow-hidden',
+          'shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)]'
+        )}
+      >
+        <DialogHeader className="gap-0">
+          <DialogTitle className="text-[#09090B] text-lg font-semibold leading-7">
             Validation Complete
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Results Card */}
-          <div className="bg-neutral-50 border border-neutral-200 rounded-lg p-4">
-            <h3 className="font-semibold mb-3">📊 Validation Results</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Total Inspections:</span>
-                <span className="font-medium">{results.total}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-600">✓ Passed:</span>
-                <span className="font-medium text-green-600">
-                  {results.passed} ({passedPercentage}%)
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-600">⚠️ Failed:</span>
-                <span className="font-medium text-orange-600">
-                  {results.failed} ({failedPercentage}%)
-                </span>
-              </div>
+        <div className="flex flex-col gap-3">
+          {/* Results */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[#3F3F46] text-sm font-semibold leading-5">Results</div>
+            <div className="flex flex-col gap-2">
+              {statRow('Total inspections:', results.total)}
+              {statRow(
+                'Passed:',
+                `${results.passed} of ${results.total} (${passedPercentage}%)`,
+                'text-[#15803D]'
+              )}
+              {statRow(
+                'Failed:',
+                `${results.failed} of ${results.total} (${failedPercentage}%)`,
+                'text-[#B91C1C]'
+              )}
             </div>
           </div>
 
-          <div className="h-px bg-neutral-200" />
+          <div className="h-px bg-[#E4E4E7]" />
 
-          {/* Common Issues */}
-          <div className="space-y-3">
-            <h3 className="font-semibold text-sm">Common Issues Found:</h3>
-            <div className="space-y-2 text-sm">
+          {/* Common issues */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[#3F3F46] text-sm font-semibold leading-5">Common issues</div>
+            <div className="flex flex-col gap-1">
               {Object.entries(results.summary)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 5)
                 .map(([issue, count]) => (
-                  <div key={issue} className="flex items-start gap-2">
-                    <span className="text-orange-600">•</span>
-                    <span className="text-neutral-700">
-                      {count} inspections {issue}
-                    </span>
+                  <div
+                    key={issue}
+                    className="text-[#3F3F46] text-sm font-medium leading-5"
+                  >
+                    {count} inspection{count !== 1 ? 's' : ''} - {issue}
                   </div>
                 ))}
             </div>
           </div>
         </div>
 
-        <DialogFooter className="flex gap-2">
-          <Button variant="outline" onClick={onDownloadReport}>
-            <Download className="w-4 h-4 mr-2" />
-            Download Report
+        <DialogFooter className="flex justify-end gap-2 sm:justify-end">
+          <Button
+            variant="outline"
+            onClick={onDownloadReport}
+            className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] font-medium"
+          >
+            Download report
           </Button>
-          <Button onClick={onViewErrors}>
-            <Eye className="w-4 h-4 mr-2" />
-            View All Errors →
+          <Button
+            onClick={onViewErrors}
+            className="h-10 px-4 rounded-lg bg-[#E86F25] text-[#FAFAFA] font-medium hover:bg-[#d66320]"
+          >
+            View all errors
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
+
+
 
 
 

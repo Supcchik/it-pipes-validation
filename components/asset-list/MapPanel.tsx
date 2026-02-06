@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import type { Asset, FilterConfig, PlotPoint, AssetType } from '@/lib/types/asset-list';
 import { MOCK_MANHOLES, MOCK_PIPE_SEGMENTS, getPipeSegmentByAssetId } from '@/lib/mock-data/mockMapData';
 import { calculatePlotPosition, calculatePipeLength } from '@/lib/utils/map-utils';
+import { cn } from '@/lib/utils';
 import { type NetworkAsset } from './MapSearch';
 import ManholePopup from './ManholePopup';
 import PipeSegmentPopup from './PipeSegmentPopup';
@@ -28,19 +29,39 @@ interface MapPanelProps {
   assetTypes?: AssetType[]; // Active asset types (ML, MH, L, or combinations)
 }
 
-// Style constants
+// Rounded rect path for canvas labels
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  if (typeof (ctx as CanvasRenderingContext2D & { roundRect?: unknown }).roundRect === 'function') {
+    (ctx as CanvasRenderingContext2D & { roundRect: (x: number, y: number, w: number, h: number, r: number) => void }).roundRect(x, y, w, h, r);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+}
+
+// Style constants (візуальний макет: track #71717A, fill #92BDE3; manhole #E86F25, border #F4F4F5)
+const PIPE_TRACK = { stroke: '#71717A', strokeWidth: 5 };
+const PIPE_FILL = { stroke: '#92BDE3', strokeWidth: 4 };
 const PIPE_STYLES = {
-  default: { stroke: '#2563EB', strokeWidth: 3, opacity: 0.8 },
-  hover: { stroke: '#1D4ED8', strokeWidth: 4, opacity: 1 },
+  default: { stroke: '#92BDE3', strokeWidth: 4, opacity: 1 },
+  hover: { stroke: '#92BDE3', strokeWidth: 5, opacity: 1 },
   selected: { stroke: '#E86F25', strokeWidth: 5, opacity: 1 },
   filtered: { stroke: '#94A3B8', strokeWidth: 2, opacity: 0.3 },
 };
 
 const MANHOLE_STYLES = {
-  default: { fill: '#DC2626', radius: 6, stroke: '#FFFFFF', strokeWidth: 2 },
-  hover: { fill: '#B91C1C', radius: 8, stroke: '#FFFFFF', strokeWidth: 2 },
-  selected: { fill: '#E86F25', radius: 10, stroke: '#FFFFFF', strokeWidth: 3 },
-  filtered: { fill: '#94A3B8', radius: 4, opacity: 0.3 },
+  default: { fill: '#E86F25', radius: 8, stroke: '#F4F4F5', strokeWidth: 1 },
+  hover: { fill: '#E86F25', radius: 9, stroke: '#F4F4F5', strokeWidth: 1 },
+  selected: { fill: '#E86F25', radius: 10, stroke: '#F4F4F5', strokeWidth: 2 },
+  filtered: { fill: '#94A3B8', radius: 4, opacity: 0.3, stroke: '#F4F4F5', strokeWidth: 1 },
 };
 
 export default function MapPanel({
@@ -575,10 +596,21 @@ export default function MapPanel({
 
         if (isFiltered) return; // Don't draw filtered out items
 
-        ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : PIPE_STYLES.default.stroke;
-        ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : PIPE_STYLES.default.strokeWidth;
+        // Track (сірий контур) + fill (синій) за макетом
+        if (!isSelected && !isHovered) {
+          ctx.strokeStyle = PIPE_TRACK.stroke;
+          ctx.lineWidth = PIPE_TRACK.strokeWidth;
+          ctx.beginPath();
+          pipe.coordinates.forEach((coord, index) => {
+            const { x, y } = latLngToXY(coord.lat, coord.lng);
+            if (index === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+        }
+        ctx.strokeStyle = isSelected ? PIPE_STYLES.selected.stroke : isHovered ? PIPE_STYLES.hover.stroke : PIPE_FILL.stroke;
+        ctx.lineWidth = isSelected ? PIPE_STYLES.selected.strokeWidth : isHovered ? PIPE_STYLES.hover.strokeWidth : PIPE_FILL.strokeWidth;
         ctx.globalAlpha = PIPE_STYLES.default.opacity;
-
         ctx.beginPath();
         pipe.coordinates.forEach((coord, index) => {
           const { x, y } = latLngToXY(coord.lat, coord.lng);
@@ -596,8 +628,8 @@ export default function MapPanel({
           const { x, y } = latLngToXY(midCoord.lat, midCoord.lng);
           
           ctx.save();
-          ctx.fillStyle = '#1F2937';
-          ctx.font = '11px sans-serif';
+          ctx.fillStyle = '#3F3F46';
+          ctx.font = '600 10px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           
@@ -616,10 +648,18 @@ export default function MapPanel({
           }
           
           if (labelText) {
-            // Draw text with white background for readability
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(x - ctx.measureText(labelText).width / 2 - 4, y - 8, ctx.measureText(labelText).width + 8, 16);
-            ctx.fillStyle = '#1F2937';
+            // Пілюля за макетом: bg #FAFAFA, border #E4E4E7, text #3F3F46, 10px font-weight 600
+            const pad = 4;
+            const w = ctx.measureText(labelText).width + pad * 2;
+            const h = 16;
+            const rx = 2;
+            ctx.fillStyle = '#FAFAFA';
+            ctx.strokeStyle = '#E4E4E7';
+            ctx.lineWidth = 1;
+            roundRect(ctx, x - w / 2, y - h / 2, w, h, rx);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#3F3F46';
             ctx.fillText(labelText, x, y);
           }
           ctx.restore();
@@ -661,8 +701,8 @@ export default function MapPanel({
               const { x, y } = latLngToXY(midCoord[0], midCoord[1]);
               
               ctx.save();
-              ctx.fillStyle = '#1F2937';
-              ctx.font = '11px sans-serif';
+              ctx.fillStyle = '#3F3F46';
+              ctx.font = '600 10px sans-serif';
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               
@@ -676,9 +716,16 @@ export default function MapPanel({
               }
               
               if (labelText) {
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillRect(x - ctx.measureText(labelText).width / 2 - 4, y - 8, ctx.measureText(labelText).width + 8, 16);
-                ctx.fillStyle = '#1F2937';
+                const pad = 4;
+                const w = ctx.measureText(labelText).width + pad * 2;
+                const h = 16;
+                ctx.fillStyle = '#FAFAFA';
+                ctx.strokeStyle = '#E4E4E7';
+                ctx.lineWidth = 1;
+                roundRect(ctx, x - w / 2, y - h / 2, w, h, 2);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = '#3F3F46';
                 ctx.fillText(labelText, x, y);
               }
               ctx.restore();
@@ -740,8 +787,8 @@ export default function MapPanel({
         // Draw labels if enabled (only for active types)
         if (displayOptions.showLabels) {
           ctx.save();
-          ctx.fillStyle = '#1F2937';
-          ctx.font = '12px sans-serif';
+          ctx.fillStyle = '#3F3F46';
+          ctx.font = '600 10px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'top';
           ctx.fillText(manhole.name, x, y + radius + 4);
@@ -1348,8 +1395,8 @@ export default function MapPanel({
       aria-label="Asset map view"
       style={{ minWidth: 0, maxWidth: '100%' }}
     >
-      {/* Map Area - Canvas with floating controls */}
-      <div ref={mapAreaRef} className="flex-1 relative min-h-0 min-w-0" style={{ maxWidth: '100%', overflow: 'visible' }}>
+      {/* Map Area - Canvas with floating controls (padding за макетом: 24px L/R, 16px T/B) */}
+      <div ref={mapAreaRef} className="flex-1 relative min-h-0 min-w-0 px-6 py-4" style={{ maxWidth: '100%', overflow: 'visible' }}>
       {/* Canvas */}
       <canvas
         ref={canvasRef}
@@ -1371,16 +1418,16 @@ export default function MapPanel({
 
         {/* Floating Controls Layer - Overlay on top of canvas */}
         <div className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible' }}>
-          {/* Floating Search Pill - Top Left */}
+          {/* Floating Search - Top Left (макет: 240px, rounded-md, border #E4E4E7, shadow) */}
           <div className="absolute top-4 left-4 pointer-events-auto">
-          <div className="relative w-[280px]">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-neutral-400" />
+          <div className="relative w-[240px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-[#09090B]" />
             <Input
               value={mapSearchQuery}
               onChange={(e) => handleMapSearch(e.target.value)}
               onFocus={() => setShowSearchResults(mapSearchResults.length > 0)}
-              placeholder="Search city network..."
-              className="h-11 pl-11 pr-10 rounded-full bg-white shadow-md border-0 focus:border-2 focus:border-blue-600 focus:shadow-[0_4px_12px_rgba(59,130,246,0.25)] transition-all"
+              placeholder="Search city network"
+              className="min-h-9 pl-10 pr-10 py-2.5 rounded-md bg-white border border-[#E4E4E7] shadow-[0px_2px_4px_rgba(0,0,0,0.12)] placeholder:text-[#71717A] text-sm focus-visible:ring-[#E86F25] focus-visible:border-[#E86F25]"
             />
             {mapSearchQuery && (
               <button
@@ -1422,200 +1469,161 @@ export default function MapPanel({
           </div>
           </div>
 
-          {/* Floating Settings Button - Top Right */}
+          {/* Floating Settings Button - Top Right (макет: 40x40, rounded-lg, border #E4E4E7, shadow) */}
         <Popover>
           <PopoverTrigger asChild>
             <button
-              className="absolute top-4 right-4 pointer-events-auto w-11 h-11 rounded-full bg-white shadow-md flex items-center justify-center hover:scale-105 transition-transform"
+              className="absolute top-4 right-4 pointer-events-auto w-10 h-10 rounded-lg bg-white border border-[#E4E4E7] shadow-[0px_2px_4px_rgba(0,0,0,0.12)] flex items-center justify-center hover:bg-neutral-50 transition-colors"
               aria-label="Map settings"
             >
-              <Settings className="h-5 w-5 text-neutral-700" />
+              <Settings className="h-4 w-4 text-[#09090B]" />
             </button>
           </PopoverTrigger>
-        <PopoverContent className="w-80 p-0" align="end">
-          <div className="p-4 space-y-4">
-            {/* Base Map Section - Google Maps style buttons */}
-            <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-3">Base Map</h3>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => {
-                    setBasemap('streets');
-                  }}
-                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                    basemap === 'streets'
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
-                    🗺️
-            </div>
-                  <span className="text-xs font-medium text-neutral-700">Streets</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setBasemap('satellite');
-                  }}
-                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                    basemap === 'satellite'
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
-                    🛰️
-          </div>
-                  <span className="text-xs font-medium text-neutral-700">Satellite</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setBasemap('hybrid');
-                  }}
-                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                    basemap === 'hybrid'
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
-                    🗺️🛰️
-                  </div>
-                  <span className="text-xs font-medium text-neutral-700">Hybrid</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setBasemap('topo');
-                  }}
-                  className={`h-20 px-3 py-2 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                    basemap === 'topo'
-                      ? 'border-blue-600 bg-blue-50'
-                      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50'
-                  }`}
-                >
-                  <div className="w-8 h-8 rounded bg-neutral-200 flex items-center justify-center text-xs font-semibold">
-                    ⛰️
-                  </div>
-                  <span className="text-xs font-medium text-neutral-700">Terrain</span>
-                </button>
+        <PopoverContent className="w-auto min-w-[240px] p-0" align="end">
+          <div className="flex flex-col gap-2 px-3 py-1">
+            {/* Base Map */}
+            <div className="flex flex-col gap-1">
+              <div className="text-[#3F3F46] text-sm font-semibold leading-5">Base Map</div>
+              <div className="flex flex-col gap-1 py-1">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setBasemap('streets')}
+                    className={cn(
+                      'h-10 rounded-lg px-4 py-2 flex items-center justify-center text-sm font-medium transition-colors',
+                      basemap === 'streets'
+                        ? 'bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold'
+                        : 'border border-[#E4E4E7] text-[#18181B] hover:bg-[#F4F4F5]'
+                    )}
+                  >
+                    Streets
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBasemap('satellite')}
+                    className={cn(
+                      'h-10 rounded-lg px-4 py-2 flex items-center justify-center text-sm font-medium transition-colors',
+                      basemap === 'satellite'
+                        ? 'bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold'
+                        : 'border border-[#E4E4E7] text-[#18181B] hover:bg-[#F4F4F5]'
+                    )}
+                  >
+                    Satellite
+                  </button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setBasemap('hybrid')}
+                    className={cn(
+                      'flex-1 h-10 rounded-lg px-4 py-2 flex items-center justify-center text-sm font-medium transition-colors',
+                      basemap === 'hybrid'
+                        ? 'bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold'
+                        : 'border border-[#E4E4E7] text-[#18181B] hover:bg-[#F4F4F5]'
+                    )}
+                  >
+                    Hybrid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBasemap('topo')}
+                    className={cn(
+                      'flex-1 h-10 rounded-lg px-4 py-2 flex items-center justify-center text-sm font-medium transition-colors',
+                      basemap === 'topo'
+                        ? 'bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold'
+                        : 'border border-[#E4E4E7] text-[#18181B] hover:bg-[#F4F4F5]'
+                    )}
+                  >
+                    Terrain
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Layers Section */}
-            <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-3">Layers</h3>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-              <Checkbox
-                    id="settings-layer-sewer"
-                checked={layers.sewerLines}
-                onCheckedChange={(checked) =>
-                  setLayers({ ...layers, sewerLines: checked as boolean })
-                }
-                    className="h-5 w-5"
-              />
-                  <Label htmlFor="settings-layer-sewer" className="text-sm font-normal cursor-pointer">
-                SewerLines_All
-              </Label>
-            </div>
-                <div className="flex items-center space-x-2">
-              <Checkbox
-                    id="settings-layer-manholes"
-                checked={layers.manholes}
-                onCheckedChange={(checked) =>
-                  setLayers({ ...layers, manholes: checked as boolean })
-                }
-                    className="h-5 w-5"
-              />
-                  <Label htmlFor="settings-layer-manholes" className="text-sm font-normal cursor-pointer">
-                Manholes_All
-              </Label>
-            </div>
-                <div className="flex items-center space-x-2">
+            <div className="py-1" />
+
+            {/* Layers */}
+            <div className="flex flex-col gap-1">
+              <div className="text-[#3F3F46] text-sm font-semibold leading-5">Layers</div>
+              <div className="flex flex-col gap-1 py-1">
+                <label className="flex cursor-pointer items-center gap-2">
                   <Checkbox
-                    id="settings-layer-heatmap"
-                    checked={layers.heatMap}
-                    onCheckedChange={(checked) =>
-                      setLayers({ ...layers, heatMap: checked as boolean })
-                    }
-                    className="h-5 w-5"
+                    checked={layers.sewerLines}
+                    onCheckedChange={(c) => setLayers({ ...layers, sewerLines: c as boolean })}
+                    className="h-4 w-4 rounded border-[#E4E4E7] data-[state=checked]:bg-[#E86F25] data-[state=checked]:border-[#E86F25]"
                   />
-                  <Label htmlFor="settings-layer-heatmap" className="text-sm font-normal cursor-pointer">
-                    Heat Map (Grades)
-                  </Label>
-          </div>
-        </div>
-        <Button
-                variant="ghost"
-                className="mt-3 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                onClick={() => {
-                  // TODO: Open add layer dialog
-                  console.log('Add layer clicked');
-                }}
-              >
-                + Add Layer
-        </Button>
+                  <span className="text-[#18181B] text-sm font-medium leading-5">SewerLines_All</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <Checkbox
+                    checked={layers.manholes}
+                    onCheckedChange={(c) => setLayers({ ...layers, manholes: c as boolean })}
+                    className="h-4 w-4 rounded border-[#E4E4E7] data-[state=checked]:bg-[#E86F25] data-[state=checked]:border-[#E86F25]"
+                  />
+                  <span className="text-[#18181B] text-sm font-medium leading-5">Manholes_All</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <Checkbox
+                    checked={layers.heatMap}
+                    onCheckedChange={(c) => setLayers({ ...layers, heatMap: c as boolean })}
+                    className="h-4 w-4 rounded border-[#E4E4E7] data-[state=checked]:bg-[#E86F25] data-[state=checked]:border-[#E86F25]"
+                  />
+                  <span className="text-[#18181B] text-sm font-medium leading-5">Heat Map (Grades)</span>
+                </label>
+              </div>
             </div>
 
-            {/* Display Section */}
-            <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-3">Display</h3>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
+            <div className="py-1" />
+
+            {/* Display */}
+            <div className="flex flex-col gap-1">
+              <div className="text-[#3F3F46] text-sm font-semibold leading-5">Display</div>
+              <div className="flex flex-col gap-1 py-1">
+                <label className="flex cursor-pointer items-center gap-2">
                   <Checkbox
-                    id="display-labels"
                     checked={displayOptions.showLabels}
-                    onCheckedChange={(checked) =>
-                      setDisplayOptions({ ...displayOptions, showLabels: checked as boolean })
-                    }
-                    className="h-5 w-5"
+                    onCheckedChange={(c) => setDisplayOptions({ ...displayOptions, showLabels: c as boolean })}
+                    className="h-4 w-4 rounded border-[#E4E4E7] data-[state=checked]:bg-[#E86F25] data-[state=checked]:border-[#E86F25]"
                   />
-                  <Label htmlFor="display-labels" className="text-sm font-normal cursor-pointer">
-                    Show labels
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
+                  <span className="text-[#18181B] text-sm font-medium leading-5">Show Labels</span>
+                </label>
+                <label className="flex cursor-pointer items-center gap-2">
                   <Checkbox
-                    id="display-asset-ids"
                     checked={displayOptions.showAssetIds}
-                    onCheckedChange={(checked) =>
-                      setDisplayOptions({ ...displayOptions, showAssetIds: checked as boolean })
-                    }
-                    className="h-5 w-5"
+                    onCheckedChange={(c) => setDisplayOptions({ ...displayOptions, showAssetIds: c as boolean })}
+                    className="h-4 w-4 rounded border-[#E4E4E7] data-[state=checked]:bg-[#E86F25] data-[state=checked]:border-[#E86F25]"
                   />
-                  <Label htmlFor="display-asset-ids" className="text-sm font-normal cursor-pointer">
-                    Show asset IDs
-                  </Label>
-                </div>
+                  <span className="text-[#18181B] text-sm font-medium leading-5">Show assets ID</span>
+                </label>
               </div>
             </div>
           </div>
         </PopoverContent>
       </Popover>
 
-          {/* Floating Zoom + Box Select Stack - Right Side */}
-          <div className="absolute right-4 top-[76px] pointer-events-auto w-11 bg-white rounded-lg shadow-md overflow-hidden">
+          {/* Floating Zoom + Box Select Stack - Right (макет: white bg, border #E4E4E7, shadow, 40x40 кнопки, divider #E4E4E7) */}
+          <div className="absolute right-4 top-[76px] pointer-events-auto w-10 bg-white rounded-lg border border-[#E4E4E7] shadow-[0px_2px_4px_rgba(0,0,0,0.12)] overflow-hidden">
           {/* Zoom In */}
             <button
               onClick={handleZoomIn}
-            className="w-11 h-11 flex items-center justify-center border-b border-neutral-200 hover:bg-neutral-50 transition-colors"
+              className="w-10 h-10 flex items-center justify-center border-b border-[#E4E4E7] hover:bg-neutral-50 transition-colors text-[#09090B]"
               aria-label="Zoom in"
             >
-            <span className="text-lg font-medium text-neutral-700">+</span>
+              <span className="text-lg font-medium">+</span>
             </button>
           
           {/* Zoom Level Display */}
-          <div className="w-11 h-11 flex items-center justify-center border-b border-neutral-200 text-sm font-medium text-neutral-700">
+          <div className="w-10 h-10 flex items-center justify-center border-b border-[#E4E4E7] text-sm font-medium text-[#312C29]">
             {zoom}
           </div>
           
           {/* Zoom Out */}
             <button
               onClick={handleZoomOut}
-            className="w-11 h-11 flex items-center justify-center border-b border-neutral-200 hover:bg-neutral-50 transition-colors"
+              className="w-10 h-10 flex items-center justify-center border-b border-[#E4E4E7] hover:bg-neutral-50 transition-colors text-[#09090B]"
               aria-label="Zoom out"
             >
-            <span className="text-lg font-medium text-neutral-700">−</span>
+              <span className="text-lg font-medium">−</span>
             </button>
 
           {/* Box Select */}
@@ -1625,14 +1633,14 @@ export default function MapPanel({
               setSelectionStart(null);
               setSelectionEnd(null);
             }}
-            className={`w-11 h-11 flex items-center justify-center border-b border-neutral-200 transition-colors ${
+            className={`w-10 h-10 flex items-center justify-center border-b border-[#E4E4E7] transition-colors ${
               selectionTool === 'box'
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'hover:bg-neutral-50 text-neutral-700'
+                ? 'bg-[#E86F25] text-white hover:bg-[#d65a1a]'
+                : 'hover:bg-neutral-50 text-[#312C29]'
             }`}
             aria-label="Box select"
           >
-            <Square className="h-5 w-5" />
+            <Square className="h-4 w-4" />
           </button>
           
           {/* Cancel Button - Only visible when Box Select is active */}
@@ -1643,10 +1651,10 @@ export default function MapPanel({
                 setSelectionStart(null);
                 setSelectionEnd(null);
               }}
-              className="w-11 h-11 flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
+              className="w-10 h-10 flex items-center justify-center text-red-500 hover:bg-red-50 transition-colors"
               aria-label="Cancel box select"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" />
             </button>
           )}
       </div>

@@ -1,59 +1,116 @@
 'use client';
 
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { MessageCircle } from 'lucide-react';
 import CoreVisionLogo from '@/components/CoreVisionLogo';
 
 interface HeaderProps {
   projectName: string;
   onProjectChange: (projectId: string) => void;
+  /** Ініціали користувача для аватара (наприклад "IS") */
+  userInitials?: string;
 }
 
-export default function Header({ projectName, onProjectChange }: HeaderProps) {
-  // Mock projects list
+const navItems = [
+  { label: 'Assets', href: '/' },
+  { label: 'Dashboard', href: '#' },
+  { label: 'Users', href: '#' },
+] as const;
+
+export default function Header({
+  projectName,
+  onProjectChange,
+  userInitials = 'IS',
+}: HeaderProps) {
+  const pathname = usePathname();
+
   const projects = [
     { id: 'citytestqa', name: 'CityTestQA' },
     { id: 'project2', name: 'Project 2' },
-    { id: 'project3', name: 'Project 3' }
+    { id: 'project3', name: 'Project 3' },
   ];
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 h-16 bg-white border-b border-neutral-200 shadow-sm">
-      <div className="flex items-center justify-between h-full px-6">
-        {/* Left: Logo */}
-        <div className="flex items-center">
-          <CoreVisionLogo width={124} />
-        </div>
+    <header
+      className="fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-6 bg-white border-b border-[#E4E4E7]"
+      style={{ boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.12)' }}
+    >
+      {/* Ліва частина: лого + навігація */}
+      <div className="flex items-center gap-5">
+        <CoreVisionLogo width={122} height={32} />
+        <nav className="flex items-center">
+          {navItems.map(({ label, href }) => {
+            const isActive = href === '/' && pathname === '/';
+            const wrapperClass = `flex flex-col py-2 ${isActive ? 'border-b-2 border-[#E86F25]' : ''}`;
+            const textClass = isActive
+              ? 'text-[#E86F25] font-semibold'
+              : 'text-[#3F3F46] font-medium';
+            return (
+              <div key={label} className={wrapperClass}>
+                {href === '#' ? (
+                  <span
+                    className={`h-10 min-w-[72px] px-3 py-1 rounded flex items-center justify-center text-sm cursor-default ${textClass}`}
+                  >
+                    {label}
+                  </span>
+                ) : (
+                  <Link
+                    href={href}
+                    className={`h-10 min-w-[72px] px-3 py-1 rounded flex items-center justify-center text-sm hover:text-[#18181B] ${textClass}`}
+                  >
+                    {label}
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+      </div>
 
-        {/* Center-Right: Project Selector */}
-        <div className="flex items-center gap-4">
-          <Select value={projectName} onValueChange={onProjectChange}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Select project" />
-            </SelectTrigger>
-            <SelectContent>
-              {projects.map((project) => (
-                <SelectItem key={project.id} value={project.name}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Right: Chat Support */}
-          <Button
-            variant="outline"
-            size="default"
-            onClick={() => {
-              // TODO: Open chat support
-              console.log('Chat support clicked');
-            }}
-            className="gap-2"
+      {/* Права частина: селектор проєкту, Chat Support, аватар */}
+      <div className="flex items-center gap-4">
+        <Select value={projectName} onValueChange={onProjectChange}>
+          <SelectTrigger
+            className="w-[240px] min-h-9 px-3 py-2.5 rounded-md border-[#E4E4E7] bg-white"
           >
-            <MessageCircle className="h-4 w-4" />
-            Chat Support
-          </Button>
+            <SelectValue placeholder="Select project" />
+          </SelectTrigger>
+          <SelectContent>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.name}>
+                {project.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          variant="outline"
+          size="default"
+          onClick={() => {
+            // TODO: Open chat support
+            console.log('Chat support clicked');
+          }}
+          className="h-10 px-4 py-2 rounded-lg border-[#E4E4E7] gap-2 text-[#312C29] text-sm font-medium"
+        >
+          <MessageCircle className="h-4 w-4" />
+          Chat Support
+        </Button>
+
+        <div
+          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium bg-[#FFF1E1] text-[#9A3412] shrink-0"
+          title="User"
+        >
+          {userInitials}
         </div>
       </div>
     </header>

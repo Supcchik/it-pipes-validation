@@ -22,17 +22,18 @@ import SnapshotsPanel from '@/components/asset-list/SnapshotsPanel';
 import ValidationDialog, { type ValidationOptions } from '@/components/asset-list/ValidationDialog';
 import ValidationProgressDialog from '@/components/asset-list/ValidationProgressDialog';
 import ValidationResultsDialog, { type ValidationResults } from '@/components/asset-list/ValidationResultsDialog';
-import ValidationErrorsView, { type ValidationError } from '@/components/asset-list/ValidationErrorsView';
+import ValidationErrorsView, { type ValidationError, type ValidationErrorFix } from '@/components/asset-list/ValidationErrorsView';
 import BulkFixDialog, { type BulkFix } from '@/components/asset-list/BulkFixDialog';
 import ExportProjectDialog from '@/components/asset-list/ExportProjectDialog';
 import MoveToProjectDialog from '@/components/asset-list/MoveToProjectDialog';
 import CopyToProjectDialog from '@/components/asset-list/CopyToProjectDialog';
 import DeleteConfirmDialog from '@/components/asset-list/DeleteConfirmDialog';
 import RemoveFilterConfirmDialog from '@/components/asset-list/RemoveFilterConfirmDialog';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { mockViews, mockAssets, mockColumnDefs } from '@/lib/mock-data/asset-list';
 import { mockAssetCounts, getAssetsByType } from '@/lib/mock-data/asset-types';
 import type { View, Asset, ColumnDef, FilterConfig, AssetType } from '@/lib/types/asset-list';
+import { cn } from '@/lib/utils';
 import { normalizeFilters, applyFilters, assetMatchesFilter } from '@/lib/utils/filter-utils';
 import type { ReportConfig } from '@/lib/utils/pdf-generator';
 import { getInapplicableFilters, getAssetTypeLabel, normalizeAssetTypeFromUrl, assetTypeToUrl, formatActiveTypes, areAllTypesSelected } from '@/lib/utils/asset-type-utils';
@@ -142,6 +143,7 @@ function AssetListPageContent(): React.JSX.Element {
   const [validationDialogOpen, setValidationDialogOpen] = useState(false);
   const [validationProgressOpen, setValidationProgressOpen] = useState(false);
   const [validationJobId, setValidationJobId] = useState<string | null>(null);
+  const [validationTotalCount, setValidationTotalCount] = useState(0);
   const [validationResultsOpen, setValidationResultsOpen] = useState(false);
   const [validationResults, setValidationResults] = useState<ValidationResults | null>(null);
   const [validationErrorsOpen, setValidationErrorsOpen] = useState(false);
@@ -1005,8 +1007,8 @@ function AssetListPageContent(): React.JSX.Element {
   const handleStartValidation = async (options: ValidationOptions) => {
     setValidationDialogOpen(false);
     
-    // Determine asset IDs based on scope
-    const assetIds = options.scope === 'all'
+    // Scope: filtered = entire view, selected = only selected rows
+    const assetIds = options.scope === 'filtered'
       ? filteredAssets.map(a => a.id)
       : selectedRows;
     
@@ -1015,9 +1017,9 @@ function AssetListPageContent(): React.JSX.Element {
       return;
     }
     
-    // Generate job ID
     const jobId = `validation-${Date.now()}`;
     setValidationJobId(jobId);
+    setValidationTotalCount(assetIds.length);
     setValidationProgressOpen(true);
     
     // TODO: Replace with actual API call
@@ -1033,32 +1035,50 @@ function AssetListPageContent(): React.JSX.Element {
     
     // Simulate validation process
     setTimeout(() => {
-      // Mock results
+      const total = assetIds.length;
+      const failed = Math.max(1, Math.floor(total * 0.33));
+      const passed = total - failed;
+
+      // Різноманітні типи помилок для summary (Common issues)
       const mockResults: ValidationResults = {
-        total: assetIds.length,
-        passed: Math.floor(assetIds.length * 0.58),
-        failed: Math.floor(assetIds.length * 0.42),
+        total,
+        passed,
+        failed,
         summary: {
-          'missing "Surveyed By"': 156,
-          'missing "Certificate Number"': 98,
-          'missing access points': 67,
-          'with invalid dates': 45,
-          'with invalid PACP codes': 23
+          "Missing 'Surveyed By'": Math.min(3, failed),
+          "missing 'Certificate Number'": Math.min(2, failed),
+          'Invalid inspection date': Math.min(2, failed),
+          'Invalid PACP/NASSCO code': Math.min(1, failed),
+          'Inspection date out of range': Math.min(1, failed),
         }
       };
-      
-      // Mock errors
-      const mockErrors: ValidationError[] = assetIds.slice(0, 10).map((id, idx) => ({
-        assetId: id,
-        assetName: `ML-${String(idx + 1).padStart(3, '0')}`,
-        inspectionId: String(1000 + idx),
-        inspectionDate: new Date().toLocaleDateString(),
-        errors: [
-          { type: 'missing', field: 'surveyedBy', message: 'Missing: Surveyed By', fixable: true },
-          { type: 'missing', field: 'certificateNumber', message: 'Missing: Certificate Number', fixable: true },
-          { type: 'missing', field: 'accessPoints', message: 'Access points: Need 2, found 0', fixable: false }
-        ]
-      }));
+
+      // Шаблони помилок для варіацій по інспекціях
+      const errorTemplates: Array<{ type: 'missing' | 'invalid' | 'warning'; field: string; message: string; fixable: boolean }> = [
+        { type: 'missing', field: 'surveyedBy', message: "Missing 'Surveyed By'", fixable: true },
+        { type: 'missing', field: 'certificateNumber', message: "Missing 'Certificate Number'", fixable: true },
+        { type: 'invalid', field: 'inspectionDate', message: 'Invalid inspection date', fixable: false },
+        { type: 'invalid', field: 'pacpCode', message: 'Invalid PACP/NASSCO code', fixable: false },
+        { type: 'warning', field: 'inspectionDate', message: 'Inspection date out of range', fixable: false },
+      ];
+
+      const streetNames = ['Michigan Avenue', 'Wall Street', 'Oak Lane', 'Main Street', 'Cedar Drive', 'Park Boulevard', 'River Road', 'Maple Street', 'Elm Avenue', 'Lake View'];
+
+      // Мок-помилки: у кожної інспекції 1–3 різні помилки з шаблонів (індекси варіюються по idx)
+      const mockErrors: ValidationError[] = assetIds.slice(0, 12).map((id, idx) => {
+        const indices = [(idx + 0) % 5, (idx + 2) % 5, (idx + 4) % 5];
+        const unique = [...new Set(indices)];
+        const numErrors = 1 + (idx % 3);
+        const errors = unique.slice(0, numErrors).map((i) => errorTemplates[i]);
+        return {
+          assetId: id,
+          assetName: `ML-${String(idx + 1).padStart(3, '0')}`,
+          inspectionId: String(1000 + idx),
+          inspectionDate: new Date().toLocaleDateString(),
+          street: streetNames[idx % streetNames.length],
+          errors
+        };
+      });
       
       setValidationProgressOpen(false);
       setValidationResults(mockResults);
@@ -1086,7 +1106,17 @@ function AssetListPageContent(): React.JSX.Element {
     setSelectedErrorsForBulkFix(selectedErrors);
     setBulkFixDialogOpen(true);
   };
-  
+
+  /** Inline Apply Fixes з Validation Errors View: оновити список, toast, закрити. */
+  const handleApplyValidationFixes = (fixes: ValidationErrorFix[]) => {
+    if (fixes.length === 0) return;
+    // TODO: API call to persist fixes
+    const fixedIds = new Set(fixes.map((f) => f.assetId));
+    setValidationErrors((prev) => prev.filter((e) => !fixedIds.has(e.assetId)));
+    toast.success(`${fixes.length} errors fixed`);
+    setValidationErrorsOpen(false);
+  };
+
   const handleApplyBulkFixes = async (fixes: BulkFix[]) => {
     // TODO: Implement bulk fix API call
     console.log('Applying bulk fixes:', fixes);
@@ -1225,7 +1255,7 @@ function AssetListPageContent(): React.JSX.Element {
   }, [router]);
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-50 pt-16">
+    <div className="flex flex-col h-screen bg-neutral-50 pt-14">
       <Header
         projectName="CityTestQA"
         onProjectChange={(projectId) => {
@@ -1245,7 +1275,6 @@ function AssetListPageContent(): React.JSX.Element {
         <Toolbar
           assets={assets}
           onFilteredResults={(assets) => setSimpleSearchResults(assets)}
-          onOpenAdvancedSearch={() => setSearchOpen(true)}
           onOpenViewSettings={() => setViewSettingsOpen(true)}
           onOpenFilters={handleOpenFilters}
           onOpenColumns={handleOpenColumns}
@@ -1331,8 +1360,8 @@ function AssetListPageContent(): React.JSX.Element {
           rightPanel={
             poppedOutSections.map ? null : (
               <div className="flex flex-col h-full">
-                {/* Map Panel - reduced height when snapshots panel visible */}
-                <div className={selectedAssetForSnapshots ? "flex-1 min-h-0" : "flex-1"}>
+                {/* Map area: map fills; snapshots panel floats over map with 16px inset */}
+                <div className={cn('flex-1 min-h-0 relative', selectedAssetForSnapshots && 'overflow-hidden')}>
                   <MapPanel
                     assets={filteredAssets}
                     selectedAssetIds={selectedRows}
@@ -1390,11 +1419,16 @@ function AssetListPageContent(): React.JSX.Element {
                       }
                     }}
                   />
-                </div>
-                
-                {/* Snapshots Panel - appears when single or multiple assets selected, below map */}
-                {selectedAssetForSnapshots && (
-                  <SnapshotsPanel
+                  {/* Snapshots Panel - floats over map, 16px inset; responsive; 50% width when map full screen */}
+                  {selectedAssetForSnapshots && (
+                    <div className="absolute inset-4 z-10 flex justify-end items-end pointer-events-none">
+                      <div
+                        className={cn(
+                          'pointer-events-auto ml-auto w-full max-h-full overflow-hidden flex flex-col',
+                          (activeView?.mapRatio ?? 0) >= 90 ? 'max-w-[50%]' : 'max-w-[520px]'
+                        )}
+                      >
+                        <SnapshotsPanel
                     asset={selectedAssetForSnapshots}
                     selectedAssets={selectedRows.length > 1 ? filteredAssets.filter(a => selectedRows.includes(a.id)) : []}
                     assetType={activeAssetTypes.length === 1 ? activeAssetTypes[0] : 'ML'} // For snapshots, use first type or default
@@ -1434,7 +1468,10 @@ function AssetListPageContent(): React.JSX.Element {
                       setHighlightedSnapshotId(null);
                     }}
                   />
-                )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )
           }
@@ -1573,7 +1610,7 @@ function AssetListPageContent(): React.JSX.Element {
       <ValidationDialog
         open={validationDialogOpen}
         onClose={() => setValidationDialogOpen(false)}
-        totalAssets={filteredAssets.length}
+        inViewCount={filteredAssets.length}
         selectedAssets={selectedRows.length}
         onStartValidation={handleStartValidation}
       />
@@ -1583,8 +1620,10 @@ function AssetListPageContent(): React.JSX.Element {
         onCancel={() => {
           setValidationProgressOpen(false);
           setValidationJobId(null);
+          setValidationTotalCount(0);
         }}
         jobId={validationJobId || ''}
+        totalCount={validationTotalCount}
       />
 
       {validationResults && (
@@ -1634,10 +1673,14 @@ function AssetListPageContent(): React.JSX.Element {
 
       {validationErrors.length > 0 && (
         <Dialog open={validationErrorsOpen} onOpenChange={setValidationErrorsOpen}>
-          <DialogContent className="sm:max-w-4xl h-[80vh] flex flex-col p-0">
+          <DialogContent className="flex flex-col p-0 !fixed !top-14 !right-6 !bottom-14 !left-6 !translate-x-0 !translate-y-0 !w-[calc(100vw-48px)] !max-w-[calc(100vw-48px)] !h-[calc(100vh-112px)] sm:max-w-[calc(100vw-48px)]">
+            <DialogTitle className="sr-only">
+              Validation Errors ({validationErrors.length} inspections)
+            </DialogTitle>
             <ValidationErrorsView
               errors={validationErrors}
-              onBulkFix={handleBulkFix}
+              onClose={() => setValidationErrorsOpen(false)}
+              onApplyFixes={handleApplyValidationFixes}
               onExport={handleExportValidationErrors}
             />
           </DialogContent>

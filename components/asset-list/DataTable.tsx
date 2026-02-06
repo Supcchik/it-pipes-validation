@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -45,20 +45,27 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// Тінь з Figma: Y 6px, Blur 29px, rgba(100,100,111,0.2)
+// Тінь справа від лівої групи sticky (Figma: Y 6, Blur 29, rgba(100,100,111,0.2))
+const STICKY_SHADOW_RIGHT = '4px 0 29px 0 rgba(100, 100, 111, 0.2)';
+
 // Sortable Column Header Component (moved outside to avoid webpack issues)
-function SortableColumnHeader({ 
+function SortableColumnHeader({
   column,
   onSort,
   onColumnReorder,
-  isMounted
-}: { 
+  isMounted,
+  showShadowRight = false,
+}: {
   column: ColumnDef;
   onSort: (column: string, direction: 'asc' | 'desc') => void;
   onColumnReorder?: (newOrder: string[]) => void;
   isMounted: boolean;
+  showShadowRight?: boolean;
 }) {
   // Always call useSortable (hooks rules), but only use it after mount
   const sortable = useSortable({ id: column.id });
+  const isPipeSegment = column.id === 'pipeSegment';
 
   const style = (isMounted && onColumnReorder) ? {
     transform: CSS.Transform.toString(sortable.transform),
@@ -71,9 +78,11 @@ function SortableColumnHeader({
       scope="col"
       aria-label={column.label}
       className={cn(
-        'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-600 bg-neutral-50 border-b-2 border-neutral-300',
+        'px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider text-[#4D505A] bg-[#FAFAFA] border-b border-[#E4E4E7]',
+        isPipeSegment && 'sticky left-12 z-20 min-w-[10rem]',
         column.sortable && 'cursor-pointer hover:bg-neutral-100 group'
       )}
+      style={showShadowRight && isPipeSegment ? { boxShadow: STICKY_SHADOW_RIGHT } : undefined}
       onClick={(e) => {
         // Don't sort if clicking on drag handle
         if ((e.target as HTMLElement).closest('button[aria-label*="Drag"]')) {
@@ -147,6 +156,9 @@ export default function DataTable({
   loading = false
 }: DataTableProps) {
   const router = useRouter();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollSourceRef = useRef<HTMLElement | null>(null); // елемент, на якому слухаємо scroll
+  const [scrollShadows, setScrollShadows] = useState({ left: false, right: false });
   const [isMounted, setIsMounted] = useState(false);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<string | null>(null); // null = full row edit, string = single field edit
@@ -159,6 +171,70 @@ export default function DataTable({
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Знайти елемент, який реально скролиться по горизонталі
+  const getScrollContainer = (): HTMLElement | null => {
+    let el: HTMLElement | null = scrollContainerRef.current;
+    while (el) {
+      if (el.scrollWidth > el.clientWidth) return el;
+      el = el.parentElement;
+    }
+    return null;
+  };
+
+  // Якщо контент ширший за контейнер, скрол може бути на батьку — знайти батька з overflow
+  const getScrollParentByOverflow = (): HTMLElement | null => {
+    let el = scrollContainerRef.current?.parentElement ?? null;
+    while (el) {
+      const style = window.getComputedStyle(el);
+      const ox = style.overflowX;
+      const o = style.overflow;
+      if (ox === 'auto' || ox === 'scroll' || o === 'auto' || o === 'scroll') return el;
+      el = el.parentElement;
+    }
+    return null;
+  };
+
+  const updateScrollShadows = () => {
+    const el = scrollSourceRef.current ?? getScrollContainer();
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setScrollShadows({
+      left: scrollLeft > 0,
+      right: scrollWidth > clientWidth && scrollLeft < scrollWidth - clientWidth - 1,
+    });
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setScrollShadows({
+      left: scrollLeft > 0,
+      right: scrollWidth > clientWidth && scrollLeft < scrollWidth - clientWidth - 1,
+    });
+  };
+
+  useEffect(() => {
+    const ourEl = scrollContainerRef.current;
+    if (!ourEl) return;
+    const scrollEl = getScrollContainer() ?? getScrollParentByOverflow();
+    if (!scrollEl) {
+      const t = setTimeout(updateScrollShadows, 150);
+      return () => clearTimeout(t);
+    }
+    scrollSourceRef.current = scrollEl;
+    updateScrollShadows();
+    scrollEl.addEventListener('scroll', updateScrollShadows);
+    const ro = new ResizeObserver(updateScrollShadows);
+    ro.observe(scrollEl);
+    const t = setTimeout(updateScrollShadows, 150);
+    return () => {
+      scrollSourceRef.current = null;
+      scrollEl.removeEventListener('scroll', updateScrollShadows);
+      ro.disconnect();
+      clearTimeout(t);
+    };
+  }, [data.length, columns.length]);
 
   // Drag and drop sensors - MUST be called before any early returns
   const sensors = useSensors(
@@ -641,8 +717,8 @@ export default function DataTable({
   // Render header row content
   const headerRowContent = (
     <TableRow>
-      {/* Checkbox column */}
-      <TableHead className="w-12" scope="col">
+      {/* Checkbox column - sticky left */}
+      <TableHead className="w-12 sticky left-0 z-20 px-4 py-4 bg-[#FAFAFA] border-b border-[#E4E4E7]" scope="col">
         <Checkbox
           checked={allSelected}
           onCheckedChange={handleSelectAll}
@@ -658,18 +734,24 @@ export default function DataTable({
           onSort={onSort}
           onColumnReorder={onColumnReorder}
           isMounted={isMounted}
+          showShadowRight={scrollShadows.left}
         />
       ))}
 
-      {/* Actions column - Fixed sticky column */}
-      <ActionsColumnHeader />
+      {/* Actions column - sticky right */}
+      <ActionsColumnHeader showShadowLeft={scrollShadows.right} />
     </TableRow>
   );
 
   // Table content
   const tableContent = (
-    <Table role="table" aria-label="Asset list table">
-      <TableHeader className="sticky top-0 bg-white z-10">
+    <Table
+      ref={scrollContainerRef}
+      onScroll={handleScroll}
+      role="table"
+      aria-label="Asset list table"
+    >
+      <TableHeader className="sticky top-0 z-10 bg-[#FAFAFA]">
         {onColumnReorder && isMounted ? (
           <SortableContext
             items={columns.map(col => col.id)}
@@ -694,13 +776,12 @@ export default function DataTable({
                 aria-selected={isSelected}
                 aria-label={`Asset ${asset.pipeSegment || asset.id}`}
                 className={cn(
-                  'h-14 transition-colors',
-                  isFullRowEdit 
-                    ? 'bg-yellow-50 border-yellow-300 border-2' 
+                  'min-h-[72px] border-b border-[#E4E4E7] transition-colors',
+                  isFullRowEdit
+                    ? 'bg-yellow-50 border-yellow-300 border-2'
                     : isEditing
-                    ? 'bg-blue-50' // Single field edit - subtle background
-                    : 'cursor-pointer',
-                  !isEditing && index % 2 === 0 ? 'bg-white' : !isEditing ? 'bg-neutral-50' : '',
+                    ? 'bg-blue-50'
+                    : 'cursor-pointer bg-white',
                   !isEditing && isSelected && 'bg-gray-100',
                   !isEditing && 'hover:bg-gray-50',
                   isSelected && 'focus:outline-2 focus:outline-orange-500 focus:outline-offset-2'
@@ -713,8 +794,8 @@ export default function DataTable({
                   }
                 }}
               >
-                {/* Checkbox / Edit indicator */}
-                <TableCell className="w-12" onClick={(e) => e.stopPropagation()}>
+                {/* Checkbox / Edit indicator - sticky left */}
+                <TableCell className="w-12 sticky left-0 z-20 p-4 bg-white" onClick={(e) => e.stopPropagation()}>
                   {!isEditing ? (
                     <Checkbox
                       checked={isSelected}
@@ -754,10 +835,15 @@ export default function DataTable({
                     }
                   };
 
+                  const isPipeSegmentCol = column.id === 'pipeSegment';
                   return (
-                    <TableCell 
-                      key={column.id} 
-                      className="px-4 py-3 text-sm"
+                    <TableCell
+                      key={column.id}
+                      className={cn(
+                        'p-4 text-sm font-medium text-[#09090B] bg-white align-middle',
+                        isPipeSegmentCol && 'sticky left-12 z-20 min-w-[10rem] bg-white'
+                      )}
+                      style={scrollShadows.left && isPipeSegmentCol ? { boxShadow: STICKY_SHADOW_RIGHT } : undefined}
                     >
                       {isEditingThisField && isEditable ? (
                         // Edit mode input with auto-save - different input types based on column type
@@ -988,6 +1074,22 @@ export default function DataTable({
                             if (typeof value === 'boolean') {
                               return value ? 'Yes' : 'No';
                             }
+                            // Pipe Segment: blue link color per Figma
+                            if (column.field === 'pipeSegment' && value) {
+                              return (
+                                <span className="text-[#446CEE] font-medium">
+                                  {String(value)}
+                                </span>
+                              );
+                            }
+                            // Material: pill style (rounded outline) per Figma
+                            if (column.field === 'material' && value) {
+                              return (
+                                <span className="inline-flex items-center px-3 py-0.5 rounded-lg border border-[#E4E4E7] text-sm font-medium text-[#18181B]">
+                                  {String(value)}
+                                </span>
+                              );
+                            }
                             return value;
                           })()}
                         </span>
@@ -996,8 +1098,9 @@ export default function DataTable({
                   );
                 })}
 
-                {/* Actions - Fixed sticky column */}
+                {/* Actions - sticky right */}
                 <ActionsColumnCell
+                  showShadowLeft={scrollShadows.right}
                   asset={asset}
                   isEditing={isEditing}
                   onViewDetails={handleViewDetails}

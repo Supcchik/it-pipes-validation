@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Image as ImageIcon, ChevronDown, ArrowRight, GripVertical } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from '@/components/ui/select';
 import type { Asset, AssetType } from '@/lib/types/asset-list';
+import { cn } from '@/lib/utils';
+import { Label } from '@/components/ui/label';
 
 // Snapshot data interface
 export interface SnapshotData {
@@ -34,40 +34,60 @@ interface SnapshotsPanelProps {
   assetType?: AssetType; // Active asset type (ML, MH, or L)
 }
 
-// Mock snapshots data generator
+// Distance as feet+inches string (e.g. 8'11", 27'2")
+function formatDistance(feet: number): string {
+  const f = Math.floor(feet);
+  const inches = Math.round((feet - f) * 12);
+  return inches > 0 ? `${f}'${inches}"` : `${f}'`;
+}
+
+// Mock snapshots data generator (Figma-style: OBR, BSV, distances 8'11", 27'2", 45'8", etc.)
 function generateMockSnapshots(asset: Asset): SnapshotData[] {
   if (!asset.latestInspection) return [];
-  
   const snapshots: SnapshotData[] = [];
-  const codes = ['TBD', 'CRK', 'ROOT', 'SAGG', 'DEP'];
+  const codes = ['OBR', 'BSV', 'OBR', 'CRK'];
   const codeDescriptions: Record<string, string> = {
-    'TBD': 'To Be Determined',
-    'CRK': 'Crack',
-    'ROOT': 'Root Intrusion',
-    'SAGG': 'Sagging',
-    'DEP': 'Depression'
+    OBR: 'Broken Pipe',
+    BSV: 'Displaced Joint',
+    CRK: 'Crack',
+    TBD: 'To Be Determined',
+    ROOT: 'Root Intrusion',
+    SAGG: 'Sagging',
+    DEP: 'Depression',
   };
-  
-  // Generate snapshots based on observationCount
-  const observationCount = asset.observationCount ?? 0;
+  const distances = [8 + 11 / 12, 27 + 2 / 12, 45 + 8 / 12];
+  const observationCount = Math.max(asset.observationCount ?? 3, 3);
   for (let i = 0; i < observationCount; i++) {
-    const distance = (i + 1) * 12; // 12', 24', 36', etc.
+    const distance = distances[i % distances.length] || (i + 1) * 12;
     const code = codes[i % codes.length];
-    const grade = Math.min(5, Math.max(0, Math.floor(Math.random() * 6))) as 0 | 1 | 2 | 3 | 4 | 5;
-    
+    const grade = (i % 3 === 0 ? 2 : i % 3 === 1 ? 3 : 2) as 0 | 1 | 2 | 3 | 4 | 5;
     snapshots.push({
       id: `snapshot-${asset.id}-${i}`,
       distance,
       code,
-      codeDescription: codeDescriptions[code],
+      codeDescription: codeDescriptions[code] || code,
       grade,
-      thumbnailUrl: `https://via.placeholder.com/120x90?text=${code}+${distance}'`,
-      inspectionId: asset.latestInspection.id
+      thumbnailUrl: 'https://placehold.co/160x90',
+      inspectionId: asset.latestInspection.id,
     });
   }
-  
   return snapshots;
 }
+
+const GRADE_COLORS: Record<number, { bg: string; text: string }> = {
+  0: { bg: 'bg-[#16A34A]', text: 'text-[#BBF7D0]' },
+  1: { bg: 'bg-[#16A34A]', text: 'text-[#BBF7D0]' },
+  2: { bg: 'bg-[#FCD34D]', text: 'text-[#B45309]' },
+  3: { bg: 'bg-[#FCD34D]', text: 'text-[#B45309]' },
+  4: { bg: 'bg-[#FEF3C7]', text: 'text-[#B45309]' },
+  5: { bg: 'bg-[#FEF3C7]', text: 'text-[#B45309]' },
+};
+
+const CODE_PILL_BG: Record<string, string> = {
+  OBR: 'bg-[#BFDBFE]',
+  BSV: 'bg-[#FED7AA]',
+  default: 'bg-[#8CBAF4]',
+};
 
 export default function SnapshotsPanel({
   asset,
@@ -78,239 +98,307 @@ export default function SnapshotsPanel({
   onAssign,
   onViewInspection,
   onClearSelection,
-  assetType = 'ML' // Default to Mainlines
+  assetType = 'ML',
 }: SnapshotsPanelProps) {
-  const [visibleGrades, setVisibleGrades] = useState<number[]>([0, 1, 2, 3, 4, 5]);
+  const [gradeMin, setGradeMin] = useState(1);
+  const [gradeMax, setGradeMax] = useState(3);
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [assignedUser, setAssignedUser] = useState<{ id: string; name: string } | null>(null);
+  const sliderTrackRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef<'min' | 'max' | null>(null);
 
   const isMultipleSelection = selectedAssets.length > 1 || (selectedAssets.length === 0 && !asset);
-  const displayAssets = isMultipleSelection ? selectedAssets : (asset ? [asset] : []);
-
-  // Mock users list
   const users = [
     { id: 'user1', name: 'John Smith' },
     { id: 'user2', name: 'Mary Johnson' },
     { id: 'user3', name: 'Bob Wilson' },
   ];
 
-  // Close panel on Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && (asset || selectedAssets.length > 0)) {
-        onClose();
-      }
+      if (e.key === 'Escape' && (asset || selectedAssets.length > 0)) onClose();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [asset, selectedAssets.length, onClose]);
 
+  // Завершити перетягування слайдера при pointerup/pointercancel поза елементом
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      draggingRef.current = null;
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalPointerUp);
+    };
+  }, []);
+
   if (!asset && selectedAssets.length === 0) return null;
 
-  // Determine if we should show snapshots (ML/L) or details (MH)
   const showSnapshots = assetType === 'ML' || assetType === 'L';
   const showDetails = assetType === 'MH';
 
-  // Generate snapshots for single or multiple selection (only for ML/L)
   let allSnapshots: SnapshotData[] = [];
   if (showSnapshots) {
     if (isMultipleSelection && selectedAssets.length > 0) {
-      // Multi-select: generate snapshots for all selected assets
-      selectedAssets.forEach(selectedAsset => {
+      selectedAssets.forEach((selectedAsset) => {
         const assetSnapshots = generateMockSnapshots(selectedAsset);
-        // Add asset info to each snapshot
-        const snapshotsWithAssetInfo = assetSnapshots.map(s => ({
+        const snapshotsWithAssetInfo = assetSnapshots.map((s) => ({
           ...s,
           assetId: selectedAsset.id,
           assetName: selectedAsset.pipeSegment || selectedAsset.lateralId || selectedAsset.id,
-          inspectionDate: selectedAsset.latestInspection?.date || undefined
+          inspectionDate: selectedAsset.latestInspection?.date || undefined,
         }));
         allSnapshots = [...allSnapshots, ...snapshotsWithAssetInfo];
       });
     } else if (asset) {
-      // Single-select: generate snapshots for one asset
       allSnapshots = generateMockSnapshots(asset);
     }
   }
-  
-  const filteredSnapshots = allSnapshots.filter(s => visibleGrades.includes(s.grade));
 
-  const toggleGrade = (grade: number) => {
-    setVisibleGrades(prev =>
-      prev.includes(grade)
-        ? prev.filter(g => g !== grade)
-        : [...prev, grade]
-    );
-  };
+  const filteredSnapshots = allSnapshots.filter((s) => s.grade >= gradeMin && s.grade <= gradeMax);
 
-  const getGradeColor = (grade: number): string => {
-    if (grade <= 1) return 'bg-green-500';
-    if (grade === 2) return 'bg-yellow-500';
-    if (grade === 3) return 'bg-orange-500';
-    return 'bg-red-500';
+  const positionToGrade = useCallback((clientX: number): number => {
+    const el = sliderTrackRef.current;
+    if (!el) return 0;
+    const rect = el.getBoundingClientRect();
+    const p = (clientX - rect.left) / rect.width;
+    const raw = p * 5;
+    return Math.max(0, Math.min(5, Math.round(raw)));
+  }, []);
+
+  const handlePointerDown = (thumb: 'min' | 'max', e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    draggingRef.current = thumb;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (draggingRef.current === null) return;
+      const el = sliderTrackRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const p = (e.clientX - rect.left) / rect.width;
+      const g = Math.max(0, Math.min(5, Math.round(p * 5)));
+      if (draggingRef.current === 'min') {
+        setGradeMin((prev) => {
+          const next = Math.min(gradeMax, g);
+          return next !== prev ? next : prev;
+        });
+      } else {
+        setGradeMax((prev) => {
+          const next = Math.max(gradeMin, g);
+          return next !== prev ? next : prev;
+        });
+      }
+    },
+    [gradeMin, gradeMax]
+  );
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (draggingRef.current !== null) {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    }
+    draggingRef.current = null;
+  }, []);
 
   const handleAssign = (userId: string | null) => {
     if (userId === null || userId === 'unassign') {
-      // Unassign
       setAssignedUser(null);
-      if (onAssign) {
-        onAssign(''); // Empty string for unassign
-      }
+      onAssign?.('');
     } else {
-      const user = users.find(u => u.id === userId);
+      const user = users.find((u) => u.id === userId);
       if (user) {
         setAssignedUser(user);
-        if (onAssign) {
-          onAssign(userId);
-        }
+        onAssign?.(userId);
       }
     }
     setAssignDropdownOpen(false);
   };
 
-  const getAssignButtonText = () => {
-    if (assignedUser) {
-      return `Assigned to ${assignedUser.name}`;
-    }
-    return 'Unassigned';
-  };
+  const getAssignButtonText = () => (assignedUser ? `Assigned to ${assignedUser.name}` : 'Unassigned');
+
+  const title = isMultipleSelection
+    ? `${selectedAssets.length} selected`
+    : (asset?.pipeSegment || asset?.lateralId || asset?.manholeId || asset?.id || 'Selected');
 
   return (
-    <div 
-      className="w-full bg-white border-t border-neutral-200 shadow-lg transform transition-transform duration-300 ease-out flex flex-col"
-      onMouseEnter={(e) => e.stopPropagation()}
-      onMouseLeave={(e) => e.stopPropagation()}
+    <div
+      className="flex h-full max-h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0px_6px_29px_rgba(100,100,111,0.20)]"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
-      onMouseUp={(e) => e.stopPropagation()}
     >
-      {/* Drag Handle */}
-      <div className="flex justify-center pt-3 pb-1">
-        <div className="w-10 h-1 bg-neutral-300 rounded-full" />
-      </div>
-
       {/* Header */}
-      <div className="px-4 h-12 flex items-center justify-between border-b border-neutral-200 shrink-0">
-        <h3 className="text-base font-semibold text-neutral-900">
-          {isMultipleSelection 
-            ? `${selectedAssets.length} selected`
-            : (asset?.pipeSegment || asset?.lateralId || asset?.manholeId || asset?.id || 'Selected')}
-        </h3>
+      <div className="flex shrink-0 items-center justify-between border-b border-[#E4E4E7] bg-white px-4 py-2">
+        <h3 className="text-[#18181B] text-2xl font-semibold leading-10">{title}</h3>
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 hover:bg-neutral-100"
+          className="h-10 w-10 rounded-lg"
           onClick={onClose}
-          aria-label="Close snapshots panel"
+          aria-label="Close"
         >
-          <X className="h-4 w-4 text-neutral-500" />
+          <X className="h-4 w-4 text-[#312C29]" />
         </Button>
       </div>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-y-auto">
-        {(isMultipleSelection || asset) ? (
-          showSnapshots ? (
-            /* ML/L: Snapshots View */
-            <>
-              {/* Visible Grades Filter */}
-              <div className="px-4 py-2.5 bg-neutral-50/50 border-b border-neutral-200">
-                <Label className="text-xs font-medium text-neutral-700 mb-1.5 block">
-                  Visible Grades:
-                </Label>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  {[0, 1, 2, 3, 4, 5].map(grade => (
-                    <label
-                      key={grade}
-                      htmlFor={`grade-${grade}`}
-                      className="flex items-center gap-1.5 cursor-pointer group"
-                    >
-                      <Checkbox
-                        id={`grade-${grade}`}
-                        checked={visibleGrades.includes(grade)}
-                        onCheckedChange={() => toggleGrade(grade)}
-                        className="h-3.5 w-3.5"
-                      />
-                      <span className="text-xs text-neutral-700 group-hover:text-neutral-900 flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-full ${getGradeColor(grade)} shadow-sm`} />
-                        {grade === 0 ? '0-1' : grade.toString()}
-                      </span>
-                    </label>
+      {(isMultipleSelection || asset) && showSnapshots ? (
+        <>
+          {/* Scrollable middle: Visual Grade + Snapshots */}
+          <div className="min-h-0 flex-1 overflow-auto">
+          {/* Visual Grade */}
+          <div className="flex shrink-0 items-center justify-center gap-2.5 border-b border-[#E4E4E7] bg-white px-4 py-2">
+            <div className="flex flex-1 flex-col gap-2">
+              <span className="text-[#3F3F46] text-sm font-semibold leading-5">Visual Grade</span>
+              <div className="relative flex flex-col gap-0.5">
+                <div
+                  ref={sliderTrackRef}
+                  className="relative h-2 w-full overflow-visible rounded-full bg-[#F4F4F5]"
+                >
+                  <div className="flex h-full w-full items-center justify-between px-0.5">
+                    {[0, 1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="h-1.5 w-1.5 rounded-full bg-[#D4D4D8]" />
+                    ))}
+                  </div>
+                  <div
+                    className="absolute top-0 h-2 rounded-full bg-[#E86F25]"
+                    style={{
+                      left: `${(gradeMin / 5) * 100}%`,
+                      width: `${Math.max(0, (gradeMax - gradeMin) / 5) * 100}%`,
+                    }}
+                  />
+                  <div
+                    role="slider"
+                    aria-valuemin={0}
+                    aria-valuemax={5}
+                    aria-valuenow={gradeMin}
+                    tabIndex={0}
+                    className="absolute top-1/2 h-5 w-5 -translate-y-1/2 -translate-x-1/2 cursor-grab rounded-full border-2 border-[#E86F25] bg-white touch-none select-none active:cursor-grabbing"
+                    style={{ left: `${(gradeMin / 5) * 100}%` }}
+                    onPointerDown={(e) => handlePointerDown('min', e)}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                  />
+                  <div
+                    role="slider"
+                    aria-valuemin={0}
+                    aria-valuemax={5}
+                    aria-valuenow={gradeMax}
+                    tabIndex={0}
+                    className="absolute top-1/2 h-5 w-5 -translate-y-1/2 -translate-x-1/2 cursor-grab rounded-full border-2 border-[#E86F25] bg-white touch-none select-none active:cursor-grabbing"
+                    style={{ left: `${(gradeMax / 5) * 100}%` }}
+                    onPointerDown={(e) => handlePointerDown('max', e)}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                  />
+                </div>
+                <div className="flex w-full justify-between text-[#71717A] text-xs font-medium leading-4">
+                  {[0, 1, 2, 3, 4, 5].map((n) => (
+                    <span key={n}>{n}</span>
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
 
-              {/* Snapshots Grid */}
-              <div className="px-4 py-3 bg-white">
-                {filteredSnapshots.length === 0 ? (
-                  <div className="text-center py-6 text-sm text-neutral-500">
-                    No snapshots match the selected grades
-                  </div>
-                ) : (
-                  <div className="flex gap-3 overflow-x-auto pb-2">
-                    {filteredSnapshots.map(snapshot => {
-                      const isHighlighted = highlightedSnapshotId === snapshot.id;
-                      return (
-                      <div
-                        key={snapshot.id}
-                        data-snapshot-id={snapshot.id}
-                        className="flex-shrink-0 w-[120px] cursor-pointer group"
-                        onClick={() => onSnapshotClick(snapshot.id)}
-                      >
-                        <div className={`bg-white rounded-lg overflow-hidden border-2 transition-all duration-200 ${
-                          isHighlighted 
-                            ? 'border-orange-500 shadow-lg ring-2 ring-orange-300' 
-                            : 'border-neutral-200 group-hover:border-orange-500 group-hover:shadow-md'
-                        }`}>
-                          {/* Thumbnail */}
-                          <div className="relative w-full h-[120px] bg-gradient-to-br from-neutral-100 to-neutral-200 flex items-center justify-center">
-                            <ImageIcon className="w-10 h-10 text-neutral-400" />
-                            <div className="absolute top-2 right-2">
-                              <span className={`w-3 h-3 rounded-full ${getGradeColor(snapshot.grade)} block shadow-sm border border-white/50`} />
-                            </div>
-                            {/* Hover overlay */}
-                            <div className="absolute inset-0 bg-orange-500/0 group-hover:bg-orange-500/10 transition-colors" />
-                          </div>
-                          
-                          {/* Info */}
-                          <div className="p-2.5 space-y-1 bg-white">
-                            <div className="text-xs font-semibold text-neutral-900 flex items-center gap-1">
-                              <span>{snapshot.distance}&apos;</span>
-                            </div>
-                            <div className="text-xs font-medium text-neutral-700">
-                              {snapshot.code}
-                            </div>
-                            {snapshot.codeDescription && (
-                              <div className="text-xs text-neutral-500 truncate leading-tight">
-                                {snapshot.codeDescription}
-                              </div>
-                            )}
-                            {/* Show asset name and inspection info for multi-select */}
-                            {isMultipleSelection && snapshot.assetName && (
-                              <div className="pt-1 border-t border-neutral-100 space-y-0.5">
-                                <div className="text-xs font-medium text-neutral-900 truncate">
-                                  {snapshot.assetName}
-                                </div>
-                                {snapshot.inspectionDate && (
-                                  <div className="text-xs text-neutral-500">
-                                    Insp: {snapshot.inspectionDate}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+          {/* Snapshots row */}
+          <div className="flex flex-col border-b border-[#E4E4E7] bg-white px-4 py-2">
+            <div className="flex gap-2.5 overflow-x-auto pb-1">
+              {filteredSnapshots.length === 0 ? (
+                <p className="py-4 text-center text-sm text-[#71717A]">No snapshots in this grade range</p>
+              ) : (
+                filteredSnapshots.map((snapshot) => {
+                  const isHighlighted = highlightedSnapshotId === snapshot.id;
+                  const gradeStyle = GRADE_COLORS[snapshot.grade] ?? GRADE_COLORS[2];
+                  const codeBg = CODE_PILL_BG[snapshot.code] ?? CODE_PILL_BG.default;
+                  return (
+                    <div
+                      key={snapshot.id}
+                      data-snapshot-id={snapshot.id}
+                      onClick={() => onSnapshotClick(snapshot.id)}
+                      className={cn(
+                        'flex shrink-0 flex-col overflow-hidden rounded-lg border bg-white',
+                        isHighlighted ? 'border-[#E86F25] ring-2 ring-[#E86F25]/30' : 'border-[#E4E4E7]'
+                      )}
+                    >
+                      <div className="relative h-[90px] w-[160px] shrink-0 bg-[#F4F4F5]">
+                        <img src={snapshot.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                        <span
+                          className={cn(
+                            'absolute right-1 top-1 flex h-[22px] items-center justify-center rounded-lg px-3 text-xs font-medium',
+                            gradeStyle.bg,
+                            gradeStyle.text
+                          )}
+                        >
+                          {snapshot.grade}
+                        </span>
                       </div>
-                    );
-                    })}
-                  </div>
+                      <div className="flex flex-col gap-1 px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-right text-[#09090B] text-xs font-medium leading-4">
+                            {formatDistance(snapshot.distance)}
+                          </span>
+                          <span className={cn('rounded-lg px-3 py-0.5 text-xs font-medium text-[#18181B]', codeBg)}>
+                            {snapshot.code}
+                          </span>
+                        </div>
+                        <span className="text-right text-[#3F3F46] text-xs font-normal leading-4">
+                          {snapshot.codeDescription}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="flex justify-center border-t border-[#E4E4E7] bg-white px-2 py-1">
+              <div className="h-2 w-[120px] rounded-[26px] bg-[#E1E1E1]" />
+            </div>
+          </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex shrink-0 items-end justify-between gap-2 border-t border-[#E4E4E7] bg-white px-4 pb-6 pt-4">
+            <Select
+              open={assignDropdownOpen}
+              onOpenChange={setAssignDropdownOpen}
+              value={assignedUser?.id ?? 'unassigned'}
+              onValueChange={(v) => (v === 'unassign' ? handleAssign(null) : handleAssign(v))}
+            >
+              <SelectTrigger className="h-10 w-auto min-w-0 rounded-lg border-[#E4E4E7] bg-white px-4 text-[#312C29] text-sm font-medium">
+                <SelectValue>{getAssignButtonText()}</SelectValue>
+                <ChevronDown className="ml-1 h-4 w-4 text-[#09090B]" />
+              </SelectTrigger>
+              <SelectContent>
+                {assignedUser && (
+                  <>
+                    <SelectItem value="unassign">Unassign</SelectItem>
+                    <SelectSeparator />
+                  </>
                 )}
-              </div>
-            </>
-          ) : showDetails ? (
-            /* MH: Structural Details View */
-            <div className="px-4 py-4 bg-white">
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isMultipleSelection ? (
+              <Button variant="outline" className="h-10 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium" onClick={onClearSelection}>
+                Clear selection
+              </Button>
+            ) : (
+              <Button variant="outline" className="h-10 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium" onClick={onViewInspection}>
+                View inspection
+              </Button>
+            )}
+          </div>
+        </>
+      ) : showDetails ? (
+        <>
+            <div className="flex-1 overflow-y-auto px-4 py-4 bg-white">
               {isMultipleSelection ? (
                 /* Multi-select: Show details for all selected manholes */
                 <div className="space-y-4">
@@ -444,79 +532,42 @@ export default function SnapshotsPanel({
                 </div>
               ) : null}
             </div>
-          ) : null
-        ) : null}
-      </div>
-
-      {/* Actions Bar */}
-      <div className="px-4 py-3 border-t border-neutral-200 bg-white shrink-0">
-        <div className="flex items-center gap-3">
-          {/* Assign Button */}
-          <div className="relative flex-1">
-            <Select 
-              open={assignDropdownOpen} 
+          {/* MH Footer */}
+          <div className="flex shrink-0 items-end justify-between gap-2 border-t border-[#E4E4E7] bg-white px-4 pb-6 pt-4">
+            <Select
+              open={assignDropdownOpen}
               onOpenChange={setAssignDropdownOpen}
-              value={assignedUser?.id || 'unassigned'}
-              onValueChange={(value) => {
-                if (value === 'unassign') {
-                  handleAssign(null);
-                } else {
-                  handleAssign(value);
-                }
-              }}
+              value={assignedUser?.id ?? 'unassigned'}
+              onValueChange={(v) => (v === 'unassign' ? handleAssign(null) : handleAssign(v))}
             >
-              <SelectTrigger className="h-11 bg-white text-neutral-700 hover:bg-neutral-50 border border-neutral-300">
-                <SelectValue>
-                  {getAssignButtonText()}
-                </SelectValue>
+              <SelectTrigger className="h-10 w-auto min-w-0 rounded-lg border-[#E4E4E7] bg-white px-4 text-[#312C29] text-sm font-medium">
+                <SelectValue>{getAssignButtonText()}</SelectValue>
+                <ChevronDown className="ml-1 h-4 w-4 text-[#09090B]" />
               </SelectTrigger>
-              <SelectContent className="w-full">
-                <div className="px-2 py-1.5 text-xs font-semibold text-neutral-500">
-                  Assign {isMultipleSelection ? selectedAssets.length : 1} to:
-                </div>
+              <SelectContent>
                 {assignedUser && (
                   <>
-                    <SelectItem value="unassign">
-                      <span className="text-neutral-500">Unassign</span>
-                    </SelectItem>
+                    <SelectItem value="unassign">Unassign</SelectItem>
                     <SelectSeparator />
                   </>
                 )}
-                {users.map(user => (
-                  <SelectItem 
-                    key={user.id} 
-                    value={user.id}
-                  >
-                    👤 {user.name}
-                  </SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {isMultipleSelection ? (
+              <Button variant="outline" className="h-10 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium" onClick={onClearSelection}>
+                Clear selection
+              </Button>
+            ) : (
+              <Button variant="outline" className="h-10 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium" onClick={onViewInspection}>
+                View inspection
+              </Button>
+            )}
           </div>
-
-          {/* View/Clear Button */}
-          {isMultipleSelection ? (
-            <Button
-              variant="outline"
-              className="h-11 px-4 border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
-              onClick={onClearSelection}
-            >
-              Clear Selection
-            </Button>
-          ) : (
-            <Button
-              variant="outline"
-              className="h-11 px-4 border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50"
-              onClick={onViewInspection}
-            >
-              <span className="flex items-center gap-2">
-                <span>View Inspection</span>
-                <ArrowRight className="h-4 w-4" />
-              </span>
-            </Button>
-          )}
-        </div>
-      </div>
+        </>
+          ) : null}
     </div>
   );
 }

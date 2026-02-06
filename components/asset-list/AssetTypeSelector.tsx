@@ -1,32 +1,30 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AssetType } from '@/lib/types/asset-list';
-import { 
-  getAssetTypeLabel, 
-  formatActiveTypes, 
-  areAllTypesSelected,
-  isTypeActive,
-  toggleType,
-  setAllTypes
-} from '@/lib/utils/asset-type-utils';
+import { getAssetTypeLabel } from '@/lib/utils/asset-type-utils';
 
 interface AssetTypeSelectorProps {
-  activeTypes: AssetType[]; // Тепер масив типів
+  activeTypes: AssetType[];
   counts: {
     ML: number;
     MH: number;
     L: number;
   };
-  onTypesChange: (types: AssetType[]) => void; // Змінено на множинний вибір
+  onTypesChange: (types: AssetType[]) => void;
   loading?: boolean;
+}
+
+/** Лейбл для пункту: "Manholes (MH)", "Mainlines (ML)", "Laterals (L)" */
+function getOptionLabel(type: AssetType): string {
+  const base = getAssetTypeLabel(type);
+  return `${base} (${type})`;
 }
 
 export default function AssetTypeSelector({
   activeTypes,
-  counts,
   onTypesChange,
   loading = false
 }: AssetTypeSelectorProps) {
@@ -35,11 +33,12 @@ export default function AssetTypeSelector({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const types: AssetType[] = ['ML', 'MH', 'L'];
-  const allSelected = areAllTypesSelected(activeTypes);
-  const displayText = formatActiveTypes(activeTypes);
+  const types: AssetType[] = ['MH', 'ML', 'L'];
+  // Single-select: поточний тип — перший з масиву або ML
+  const currentType: AssetType = activeTypes.length > 0 ? activeTypes[0] : 'ML';
+  // У кнопці — тільки скорочення (ML, MH, L); повна назва лише в дропдауні
+  const displayText = currentType;
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -52,29 +51,21 @@ export default function AssetTypeSelector({
         setFocusedIndex(null);
       }
     }
-
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [isOpen]);
 
-  // Keyboard navigation
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (!isOpen) {
-        // Open dropdown with Enter or Space
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           setIsOpen(true);
         }
         return;
       }
-
-      const totalItems = types.length + 1; // +1 for "Show All" checkbox
-
       switch (event.key) {
         case 'Escape':
           event.preventDefault();
@@ -86,100 +77,83 @@ export default function AssetTypeSelector({
           event.preventDefault();
           setFocusedIndex((prev) => {
             if (prev === null) return 0;
-            return Math.min(prev + 1, totalItems - 1);
+            return Math.min(prev + 1, types.length - 1);
           });
           break;
         case 'ArrowUp':
           event.preventDefault();
           setFocusedIndex((prev) => {
-            if (prev === null) return totalItems - 1;
+            if (prev === null) return types.length - 1;
             return Math.max(prev - 1, 0);
           });
           break;
         case 'Enter':
         case ' ':
           event.preventDefault();
-          if (focusedIndex !== null) {
-            if (focusedIndex < types.length) {
-              handleTypeToggle(types[focusedIndex]);
-            } else {
-              // "Show All" checkbox
-              handleSelectAll(!allSelected);
-            }
+          if (focusedIndex !== null && focusedIndex >= 0 && focusedIndex < types.length) {
+            handleSelect(types[focusedIndex]);
           }
           break;
       }
     }
-
     if (isOpen) {
       window.addEventListener('keydown', handleKeyDown);
-      return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-      };
+      return () => window.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen, focusedIndex, types, allSelected]);
+  }, [isOpen, focusedIndex]);
 
-  const handleTypeToggle = (type: AssetType) => {
+  const handleSelect = (type: AssetType) => {
     if (loading) return;
-    const newTypes = toggleType(activeTypes, type);
-    onTypesChange(newTypes);
-  };
-
-  const handleSelectAll = (selectAll: boolean) => {
-    if (loading) return;
-    const newTypes = setAllTypes(selectAll);
-    onTypesChange(newTypes);
+    onTypesChange([type]);
+    setIsOpen(false);
+    setFocusedIndex(null);
   };
 
   const handleButtonClick = () => {
     if (!loading) {
       setIsOpen(!isOpen);
       if (!isOpen) {
-        // Set focus to first selected type or first item
-        const firstSelectedIndex = types.findIndex(t => isTypeActive(activeTypes, t));
-        setFocusedIndex(firstSelectedIndex >= 0 ? firstSelectedIndex : 0);
+        const idx = types.indexOf(currentType);
+        setFocusedIndex(idx >= 0 ? idx : 0);
       }
     }
   };
 
   return (
     <div className="relative">
-      {/* Button */}
       <button
         ref={buttonRef}
         type="button"
         onClick={handleButtonClick}
         disabled={loading}
         className={cn(
-          'h-10 px-3 rounded-lg border border-neutral-300 bg-white',
+          'h-10 px-4 py-2 rounded-lg border border-[#E4E4E7] bg-white',
           'flex items-center gap-2',
-          'text-sm font-medium',
+          'text-sm text-[#312C29]',
           'transition-colors',
-          'hover:bg-neutral-50 hover:border-neutral-400',
-          'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+          'hover:bg-neutral-50 hover:border-[#D4D4D8]',
+          'focus:outline-none focus:ring-2 focus:ring-[#E86F25] focus:ring-offset-2',
           'disabled:opacity-50 disabled:cursor-not-allowed',
-          isOpen && 'bg-neutral-50 border-neutral-400'
+          isOpen && 'bg-neutral-50 border-[#D4D4D8]'
         )}
-        aria-label="Select asset types"
+        aria-label="Select asset type"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
       >
-        <span className="text-neutral-500 font-normal">Asset:</span>
-        <span className="text-neutral-900 font-medium">
+        <span className="font-normal">Asset:</span>
+        <span className="font-medium">
           {loading ? '⏳' : displayText}
         </span>
         <ChevronDown
           className={cn(
-            'w-4 h-4 text-neutral-400 transition-transform',
+            'w-4 h-4 text-[#09090B] transition-transform',
             isOpen && 'rotate-180'
           )}
         />
       </button>
 
-      {/* Dropdown */}
       {isOpen && (
         <>
-          {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/10 z-[998]"
             onClick={() => {
@@ -187,105 +161,36 @@ export default function AssetTypeSelector({
               setFocusedIndex(null);
             }}
           />
-
-          {/* Dropdown Menu */}
           <div
             ref={dropdownRef}
-            className="absolute top-12 left-0 w-60 bg-white border border-neutral-200 rounded-lg shadow-lg z-[999]"
+            className="absolute top-12 left-0 min-w-[200px] bg-white border border-[#E4E4E7] rounded-lg shadow-lg z-[999] p-1 flex flex-col"
             role="listbox"
           >
-            {/* Header */}
-            <div className="px-4 py-2 border-b border-neutral-200">
-              <h3 className="text-sm font-semibold text-neutral-900">Asset Type</h3>
-            </div>
-
-            {/* Options */}
-            <div className="py-1">
-              {types.map((type, index) => {
-                const isChecked = isTypeActive(activeTypes, type);
-                const isFocused = focusedIndex === index;
-                const count = counts[type];
-
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => handleTypeToggle(type)}
-                    className={cn(
-                      'w-full px-4 py-2.5 flex items-center justify-between',
-                      'text-sm transition-colors',
-                      'hover:bg-neutral-50',
-                      'focus:outline-none',
-                      isChecked && 'bg-blue-50 text-blue-700',
-                      isFocused && !isChecked && 'bg-neutral-100'
-                    )}
-                    role="option"
-                    aria-selected={isChecked}
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Checkbox */}
-                      <div
-                        className={cn(
-                          'w-4 h-4 rounded border-2 flex items-center justify-center transition-colors',
-                          isChecked
-                            ? 'border-blue-600 bg-blue-600'
-                            : 'border-neutral-300 bg-white'
-                        )}
-                      >
-                        {isChecked && (
-                          <Check className="w-3 h-3 text-white" />
-                        )}
-                      </div>
-                      {/* Label */}
-                      <span className={cn('font-medium', isChecked && 'text-blue-700')}>
-                        {getAssetTypeLabel(type)}
-                      </span>
-                    </div>
-                    {/* Count */}
-                    <span className="text-xs text-neutral-500">
-                      ({count})
-                    </span>
-                  </button>
-                );
-              })}
-              
-              {/* Divider */}
-              <div className="h-px bg-neutral-200 my-1" />
-              
-              {/* Show All Types checkbox */}
-              <button
-                type="button"
-                onClick={() => handleSelectAll(!allSelected)}
-                className={cn(
-                  'w-full px-4 py-2.5 flex items-center gap-3',
-                  'text-sm transition-colors',
-                  'hover:bg-neutral-50',
-                  'focus:outline-none',
-                  allSelected && 'bg-blue-50 text-blue-700',
-                  focusedIndex === types.length && !allSelected && 'bg-neutral-100'
-                )}
-                role="option"
-                aria-selected={allSelected}
-              >
-                {/* Checkbox */}
-                <div
+            {types.map((type, index) => {
+              const isSelected = currentType === type;
+              const isFocused = focusedIndex === index;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => handleSelect(type)}
                   className={cn(
-                    'w-4 h-4 rounded border-2 flex items-center justify-center transition-colors',
-                    allSelected
-                      ? 'border-blue-600 bg-blue-600'
-                      : 'border-neutral-300 bg-white'
+                    'w-full px-2 py-2 rounded text-left flex items-center gap-4',
+                    'text-sm font-normal text-[#18181B] leading-5',
+                    'transition-colors',
+                    'hover:bg-[#F4F4F5]',
+                    'focus:outline-none',
+                    isFocused && 'bg-[#F4F4F5]'
                   )}
+                  role="option"
+                  aria-selected={isSelected}
                 >
-                  {allSelected && (
-                    <Check className="w-3 h-3 text-white" />
-                  )}
-                </div>
-                {/* Label */}
-                <span className={cn('font-medium', allSelected && 'text-blue-700')}>
-                  Show All Types
-                </span>
-              </button>
-            </div>
+                  <span className="text-[14px] font-normal text-[#18181B] leading-5">
+                    {getOptionLabel(type)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </>
       )}

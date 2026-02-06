@@ -539,5 +539,64 @@ export function buildAdvancedFilterPreview(state: AdvancedFilterState): string {
   return lines.join('\n');
 }
 
+/**
+ * Побудувати текстове превʼю для GroupFilterState (Filter Sets).
+ * Використовується у табі Saved Filters для тултіпу.
+ */
+export function buildGroupFilterPreview(state: GroupFilterState): string {
+  const lines: string[] = [];
+
+  const translateOperator = (op: FilterConfig['operator']): string => {
+    switch (op) {
+      case 'equals':
+        return 'is';
+      case 'contains':
+        return 'contains';
+      case 'startsWith':
+        return 'starts with';
+      case 'greaterThan':
+        return 'greater than';
+      case 'lessThan':
+        return 'less than';
+      default:
+        return op;
+    }
+  };
+
+  const describeCondition = (c: FilterConfig): string => {
+    const column = mockColumnDefs.find((col) => col.field === c.field && col.table === c.table);
+    const label = column?.label || c.field;
+    const op = translateOperator(c.operator);
+    const value =
+      typeof c.value === 'string' || typeof c.value === 'number'
+        ? `"${String(c.value)}"`
+        : String(c.value ?? '');
+    return `${label} ${op} ${value}`;
+  };
+
+  state.groups.forEach((group, groupIndex) => {
+    if (!group.conditions || group.conditions.length === 0) {
+      return;
+    }
+    const parts = group.conditions.map((c) => describeCondition(c));
+    const groupText = parts.length > 1 ? `(${parts.join(' and ')})` : parts[0];
+    lines.push(groupText);
+
+    if (groupIndex < state.groups.length - 1) {
+      lines.push('');
+      lines.push('or');
+      lines.push('');
+    }
+  });
+
+  if (lines.length === 0) {
+    return 'No filter sets';
+  }
+
+  return lines.join('\n');
+}
+
+
+
 
 

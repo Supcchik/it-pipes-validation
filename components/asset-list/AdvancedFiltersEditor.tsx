@@ -3,13 +3,11 @@
 import { Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import type { AdvancedFilterState, AdvancedGroup, ConditionWithOperator, FilterConfig } from '@/lib/types/asset-list';
 import { mockColumnDefs } from '@/lib/mock-data/asset-list';
-import { buildAdvancedFilterPreview } from '@/lib/utils/filter-utils';
 
 interface AdvancedFiltersEditorProps {
   state: AdvancedFilterState;
@@ -153,10 +151,10 @@ export default function AdvancedFiltersEditor({ state, onChange }: AdvancedFilte
   return (
     <div className="space-y-4">
       {groups.map((group, groupIndex) => (
-        <Card key={group.id} className="border-2 border-blue-200 bg-blue-50">
+        <Card key={group.id} className="border border-[#E4E4E7] bg-white rounded-lg">
           <CardHeader className="flex flex-row items-center justify-between py-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-neutral-900">
+              <span className="text-sm font-semibold text-[#3F3F46]">
                 {group.name || `Group ${groupIndex + 1}`}
               </span>
             </div>
@@ -186,34 +184,35 @@ export default function AdvancedFiltersEditor({ state, onChange }: AdvancedFilte
                 return (
                   <div key={condition.id} className="space-y-1">
                     {index > 0 && (
-                      <div className="flex items-center gap-3 pl-1">
-                        <span className="text-[11px] text-neutral-600">Link with next:</span>
-                        <RadioGroup
-                          value={group.conditions[index - 1].nextOperator || 'AND'}
-                          onValueChange={(val: 'AND' | 'OR') =>
-                            handleUpdateLinkOperator(group.id, group.conditions[index - 1].id, val)
+                      <div className="flex items-center justify-center gap-1 py-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateLinkOperator(group.id, group.conditions[index - 1].id, 'AND')
                           }
-                          className="flex flex-row gap-3"
+                          className={cn(
+                            'h-10 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                            (group.conditions[index - 1].nextOperator || 'AND') === 'AND'
+                              ? 'bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold'
+                              : 'border border-[#E4E4E7] text-[#18181B] bg-transparent'
+                          )}
                         >
-                          <div className="flex items-center gap-1">
-                            <RadioGroupItem value="AND" id={`${group.id}-${index}-and`} />
-                            <Label
-                              htmlFor={`${group.id}-${index}-and`}
-                              className="text-[11px] cursor-pointer"
-                            >
-                              AND
-                            </Label>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <RadioGroupItem value="OR" id={`${group.id}-${index}-or`} />
-                            <Label
-                              htmlFor={`${group.id}-${index}-or`}
-                              className="text-[11px] cursor-pointer"
-                            >
-                              OR
-                            </Label>
-                          </div>
-                        </RadioGroup>
+                          AND
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateLinkOperator(group.id, group.conditions[index - 1].id, 'OR')
+                          }
+                          className={cn(
+                            'h-10 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+                            (group.conditions[index - 1].nextOperator || 'AND') === 'OR'
+                              ? 'bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold'
+                              : 'border border-[#E4E4E7] text-[#18181B] bg-transparent'
+                          )}
+                        >
+                          OR
+                        </button>
                       </div>
                     )}
 
@@ -336,22 +335,11 @@ export default function AdvancedFiltersEditor({ state, onChange }: AdvancedFilte
         <Plus className="w-4 h-4 mr-2" />
         Add group
       </Button>
-
-      {/* Preview */}
-      {groups.some((g) => g.conditions.length > 0) && (
-        <Card className="border-neutral-200 bg-neutral-50 mt-2">
-          <CardHeader className="py-2">
-            <span className="text-xs font-semibold text-neutral-700">Preview</span>
-          </CardHeader>
-          <CardContent className="py-2">
-            <pre className="text-xs text-neutral-800 whitespace-pre-wrap max-h-40 overflow-y-auto">
-              {buildAdvancedFilterPreview(state)}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
+
+
+
 
 

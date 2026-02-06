@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -10,11 +9,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 interface ValidationProgressDialogProps {
   open: boolean;
   onCancel: () => void;
   jobId: string;
+  /** Кількість inspections для прогресу "X of total complete". */
+  totalCount: number;
 }
 
 interface ProgressData {
@@ -28,22 +30,22 @@ interface ProgressData {
 export default function ValidationProgressDialog({
   open,
   onCancel,
-  jobId
+  jobId,
+  totalCount
 }: ValidationProgressDialogProps) {
   const [progress, setProgress] = useState<ProgressData>({
     current: 0,
-    total: 0,
+    total: totalCount,
     percentage: 0,
     errorsFound: 0,
     estimatedTimeRemaining: 0
   });
 
   useEffect(() => {
-    if (!open || !jobId) {
-      // Reset progress when dialog closes
+    if (!open || !jobId || totalCount <= 0) {
       setProgress({
         current: 0,
-        total: 0,
+        total: totalCount,
         percentage: 0,
         errorsFound: 0,
         estimatedTimeRemaining: 0
@@ -51,105 +53,95 @@ export default function ValidationProgressDialog({
       return;
     }
 
-    // Initialize progress
     setProgress({
       current: 0,
-      total: 100, // Mock total
+      total: totalCount,
       percentage: 0,
       errorsFound: 0,
-      estimatedTimeRemaining: 50
+      estimatedTimeRemaining: Math.max(10, Math.round(totalCount * 8))
     });
 
-    // Poll for progress updates
-    const interval = setInterval(async () => {
-      try {
-        // TODO: Replace with actual API endpoint
-        // const response = await fetch(`/api/validate/${jobId}/progress`);
-        // const data = await response.json();
-        
-        // Mock progress for now
-        setProgress(prev => {
-          const newCurrent = Math.min(prev.current + 5, prev.total);
-          const newPercentage = Math.round((newCurrent / prev.total) * 100);
-          const newErrorsFound = prev.errorsFound + (Math.random() > 0.7 ? 1 : 0);
-          const newEstimatedTime = prev.total > 0 
-            ? Math.max(0, Math.round((prev.total - newCurrent) * 0.5))
-            : 0;
-          
-          const mockProgress: ProgressData = {
-            current: newCurrent,
-            total: prev.total,
-            percentage: newPercentage,
-            errorsFound: newErrorsFound,
-            estimatedTimeRemaining: newEstimatedTime
-          };
+    const total = totalCount;
+    const stepMs = 400;
+    const step = Math.max(1, Math.ceil(total / 25));
+    let current = 0;
+    let errorsFound = 0;
 
-          // Stop polling if complete
-          if (newPercentage >= 100) {
-            clearInterval(interval);
-          }
-          
-          return mockProgress;
-        });
-      } catch (error) {
-        console.error('Failed to fetch progress:', error);
+    const interval = setInterval(() => {
+      current = Math.min(current + step, total);
+      if (Math.random() > 0.75) errorsFound += 1;
+      const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+      const estimatedTimeRemaining = total > 0
+        ? Math.max(0, Math.round((total - current) * (stepMs / 1000)))
+        : 0;
+
+      setProgress({
+        current,
+        total,
+        percentage,
+        errorsFound,
+        estimatedTimeRemaining
+      });
+
+      if (current >= total) {
+        clearInterval(interval);
       }
-    }, 1000); // Poll every second
+    }, stepMs);
 
     return () => clearInterval(interval);
-  }, [open, jobId]);
+  }, [open, jobId, totalCount]);
 
   const formatTime = (seconds: number) => {
-    if (seconds < 60) return `~${seconds}s`;
+    if (seconds < 60) return `~${seconds} seconds`;
     const minutes = Math.ceil(seconds / 60);
     return `~${minutes} minute${minutes > 1 ? 's' : ''}`;
   };
 
+  const statRow = (label: string, value: React.ReactNode) => (
+    <div className="flex justify-between items-center w-full">
+      <span className="text-[#18181B] text-sm font-medium leading-5">{label}</span>
+      <span className="text-[#18181B] text-base font-semibold leading-6">{value}</span>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onCancel}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-            Validating Inspections...
+      <DialogContent
+        className={cn(
+          'sm:max-w-md p-6 flex flex-col gap-4 rounded-2xl border-[#E4E4E7] overflow-hidden',
+          'shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)]'
+        )}
+      >
+        <DialogHeader className="gap-0">
+          <DialogTitle className="text-[#09090B] text-lg font-semibold leading-7">
+            Validating inspections
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Progress Bar */}
-          <Progress value={progress.percentage} className="h-3" />
+        <div className="flex flex-col gap-3">
+          {/* Progress bar: висота 16px, фон #F4F4F5, заповнення #E86F25 */}
+          <Progress
+            value={progress.percentage}
+            className="h-4 w-full overflow-hidden rounded-full bg-[#F4F4F5] [&>div]:bg-[#E86F25]"
+          />
 
-          {/* Stats */}
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-neutral-600">Status:</span>
-              <span className="font-medium">Processing inspections</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-neutral-600">Progress:</span>
-              <span className="font-medium">
-                {progress.current} of {progress.total} completed
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-neutral-600">Errors found:</span>
-              <span className="font-medium text-orange-600">
-                {progress.errorsFound}
-              </span>
-            </div>
-            {progress.estimatedTimeRemaining > 0 && (
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Estimated time:</span>
-                <span className="font-medium">
-                  {formatTime(progress.estimatedTimeRemaining)}
-                </span>
-              </div>
-            )}
+          <div className="h-px bg-[#E4E4E7]" />
+
+          {/* Статистика: Status, Progress, Errors found, Estimated time */}
+          <div className="flex flex-col gap-2">
+            {statRow('Status:', 'Processing inspections')}
+            {statRow('Progress:', `${progress.current} of ${progress.total} complete`)}
+            {statRow('Errors found:', progress.errorsFound)}
+            {statRow('Estimated time:', formatTime(progress.estimatedTimeRemaining))}
           </div>
         </div>
 
         <div className="flex justify-center">
-          <Button variant="outline" onClick={onCancel}>
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] font-medium"
+          >
             Cancel
           </Button>
         </div>

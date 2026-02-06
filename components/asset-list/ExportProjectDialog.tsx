@@ -4,17 +4,15 @@ import { useState } from 'react';
 import { Download, FolderOpen, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 interface ExportProjectDialogProps {
   open: boolean;
@@ -27,18 +25,14 @@ interface ExportProjectDialogProps {
 type ExportFormat = 'csv' | 'excel' | 'pdf' | 'zip';
 type ExportScope = 'all' | 'filtered' | 'selected';
 
-interface ExportOptions {
-  format: ExportFormat;
-  include: {
-    inspectionData: boolean;
-    observations: boolean;
-    photos: boolean;
-    videos: boolean;
-    gisShapefiles: boolean;
-    certificates: boolean;
-  };
-  scope: ExportScope;
-}
+/** Опції "Include in export" за макетом Figma (без Certificates). */
+const INCLUDE_OPTIONS = [
+  { key: 'inspectionData' as const, title: 'Inspection data', description: 'Pipe segments, dates' },
+  { key: 'observations' as const, title: 'Observations', description: 'Defects, codes' },
+  { key: 'photos' as const, title: 'Photos', description: 'Inspection images' },
+  { key: 'videos' as const, title: 'Videos', description: 'Inspection recordings' },
+  { key: 'gisShapefiles' as const, title: 'GIS shape-files', description: 'Geographic data' },
+] as const;
 
 export default function ExportProjectDialog({
   open,
@@ -47,15 +41,14 @@ export default function ExportProjectDialog({
   filteredAssets,
   selectedAssets
 }: ExportProjectDialogProps) {
-  const [format, setFormat] = useState<ExportFormat>('zip');
-  const [scope, setScope] = useState<ExportScope>('all');
+  const [format, setFormat] = useState<ExportFormat>('csv');
+  const [scope, setScope] = useState<ExportScope>('selected');
   const [include, setInclude] = useState({
     inspectionData: true,
-    observations: true,
-    photos: true,
-    videos: true,
+    observations: false,
+    photos: false,
+    videos: false,
     gisShapefiles: false,
-    certificates: false,
   });
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -154,183 +147,174 @@ export default function ExportProjectDialog({
     onClose();
   };
 
-  // Step 1: Configuration
+  // Стилі пігулок за Figma: вибраний (orange) / за замовчуванням
+  const pillSelected =
+    'h-10 px-4 py-2 rounded-lg bg-[#FFEDD5] border border-[#E86F25] text-[#E86F25] font-semibold text-sm';
+  const pillDefault =
+    'h-10 px-4 py-2 rounded-lg border border-[#E4E4E7] text-[#18181B] font-medium text-sm';
+
+  // Step 1: Configuration (Figma layout)
   if (!exporting && !exportComplete) {
     return (
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Download className="w-5 h-5 text-blue-600" />
+        <DialogContent
+          className={cn(
+            'max-w-4xl w-full min-w-[680px] p-6 flex flex-col gap-4 rounded-2xl border-[#E4E4E7] overflow-hidden',
+            'shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)]'
+          )}
+        >
+          <DialogHeader className="gap-0">
+            <DialogTitle className="text-[#09090B] text-lg font-semibold leading-7">
               Export Project
             </DialogTitle>
-            <DialogDescription>
-              Configure your export settings
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 py-4">
-            {/* Export Format */}
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold">Export Format</Label>
-              <RadioGroup value={format} onValueChange={(v) => setFormat(v as ExportFormat)}>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="csv" id="format-csv" />
-                  <Label htmlFor="format-csv" className="font-normal cursor-pointer">
-                    CSV (Spreadsheet data only)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="excel" id="format-excel" />
-                  <Label htmlFor="format-excel" className="font-normal cursor-pointer">
-                    Excel (Formatted workbook)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="pdf" id="format-pdf" />
-                  <Label htmlFor="format-pdf" className="font-normal cursor-pointer">
-                    PDF (Formatted report)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="zip" id="format-zip" />
-                  <Label htmlFor="format-zip" className="font-normal cursor-pointer">
-                    ZIP (Complete archive with media)
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            <div className="h-px bg-neutral-200" />
-
-            {/* Include Options */}
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold">Include in Export</Label>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-data"
-                    checked={include.inspectionData}
-                    onCheckedChange={(checked) =>
-                      setInclude({ ...include, inspectionData: checked as boolean })
-                    }
-                  />
-                  <Label htmlFor="include-data" className="font-normal cursor-pointer">
-                    Inspection data (pipe segments, dates)
-                  </Label>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-obs"
-                    checked={include.observations}
-                    onCheckedChange={(checked) =>
-                      setInclude({ ...include, observations: checked as boolean })
-                    }
-                  />
-                  <Label htmlFor="include-obs" className="font-normal cursor-pointer">
-                    Observations (defects, codes)
-                  </Label>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-photos"
-                    checked={include.photos}
-                    onCheckedChange={(checked) =>
-                      setInclude({ ...include, photos: checked as boolean })
-                    }
-                    disabled={format === 'csv' || format === 'excel'}
-                  />
-                  <Label htmlFor="include-photos" className="font-normal cursor-pointer">
-                    Photos (inspection images)
-                  </Label>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-videos"
-                    checked={include.videos}
-                    onCheckedChange={(checked) =>
-                      setInclude({ ...include, videos: checked as boolean })
-                    }
-                    disabled={format === 'csv' || format === 'excel'}
-                  />
-                  <Label htmlFor="include-videos" className="font-normal cursor-pointer">
-                    Videos (inspection footage)
-                  </Label>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-gis"
-                    checked={include.gisShapefiles}
-                    onCheckedChange={(checked) =>
-                      setInclude({ ...include, gisShapefiles: checked as boolean })
-                    }
-                  />
-                  <Label htmlFor="include-gis" className="font-normal cursor-pointer">
-                    GIS shapefiles (geographic data)
-                  </Label>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-certs"
-                    checked={include.certificates}
-                    onCheckedChange={(checked) =>
-                      setInclude({ ...include, certificates: checked as boolean })
-                    }
-                  />
-                  <Label htmlFor="include-certs" className="font-normal cursor-pointer">
-                    Certificates (PDF documents)
-                  </Label>
-                </div>
+          <div className="flex flex-col gap-4">
+            {/* Export format */}
+            <div className="flex flex-col gap-2">
+              <div className="text-[#3F3F46] text-sm font-semibold leading-5">
+                Export format
+              </div>
+              <div className="flex flex-wrap items-center gap-1 py-1">
+                {(['csv', 'excel', 'pdf', 'zip'] as const).map((f) => (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => setFormat(f)}
+                    className={cn(
+                      'capitalize',
+                      format === f ? pillSelected : pillDefault
+                    )}
+                  >
+                    {f === 'csv' ? 'CSV' : f === 'excel' ? 'Excel' : f === 'pdf' ? 'PDF' : 'Zip'}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="h-px bg-neutral-200" />
+            <div className="h-px bg-[#E4E4E7]" />
 
-            {/* Export Scope */}
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold">Export Scope</Label>
-              <RadioGroup value={scope} onValueChange={(v) => setScope(v as ExportScope)}>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="all" id="scope-all" />
-                  <Label htmlFor="scope-all" className="font-normal cursor-pointer">
-                    All assets ({totalAssets} inspections)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="filtered" id="scope-filtered" />
-                  <Label htmlFor="scope-filtered" className="font-normal cursor-pointer">
-                    Current view ({filteredAssets} filtered)
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="selected" id="scope-selected" />
-                  <Label htmlFor="scope-selected" className="font-normal cursor-pointer">
-                    Selected only ({selectedAssets} assets)
-                  </Label>
-                </div>
-              </RadioGroup>
+            {/* Include in export — картки з чекбоксом */}
+            <div className="flex flex-col gap-2">
+              <div className="text-[#3F3F46] text-sm font-semibold leading-5">
+                Include in export
+              </div>
+              <div className="flex flex-col gap-3">
+                {INCLUDE_OPTIONS.map((opt) => {
+                  const checked = include[opt.key];
+                  const disabled =
+                    (opt.key === 'photos' || opt.key === 'videos') &&
+                    (format === 'csv' || format === 'excel');
+                  return (
+                    <div
+                      key={opt.key}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        if (!disabled) {
+                          setInclude((prev) => ({ ...prev, [opt.key]: !prev[opt.key] }));
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (!disabled) {
+                            setInclude((prev) => ({ ...prev, [opt.key]: !prev[opt.key] }));
+                          }
+                        }
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-2 rounded-lg border min-h-[84px] cursor-pointer transition-colors',
+                        checked && !disabled
+                          ? 'bg-[#FFEDD5] border-[#E86F25]'
+                          : 'bg-transparent border-[#E4E4E7]',
+                        disabled && 'opacity-60 cursor-not-allowed'
+                      )}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        disabled={disabled}
+                        onCheckedChange={(val) => {
+                          if (!disabled) {
+                            setInclude((prev) => ({ ...prev, [opt.key]: val === true }));
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className={cn(
+                          'rounded border-[#E4E4E7]',
+                          checked && !disabled && 'border-[#E86F25] data-[state=checked]:bg-[#E86F25] data-[state=checked]:border-[#E86F25]'
+                        )}
+                      />
+                      <div className="flex flex-1 flex-col gap-1">
+                        <div
+                          className={cn(
+                            'text-base font-semibold leading-6',
+                            checked && !disabled ? 'text-[#E86F25]' : 'text-[#18181B]'
+                          )}
+                        >
+                          {opt.title}
+                        </div>
+                        <div
+                          className={cn(
+                            'text-sm font-medium leading-5',
+                            checked && !disabled ? 'text-[#E86F25]' : 'text-[#18181B]'
+                          )}
+                        >
+                          {opt.description}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Estimated Size */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <p className="text-sm text-blue-900">
-                💡 Estimated file size: <strong>{getEstimatedSize()}</strong>
-              </p>
+            <div className="h-px bg-[#E4E4E7]" />
+
+            {/* Export scope */}
+            <div className="flex flex-col gap-2">
+              <div className="text-[#3F3F46] text-sm font-semibold leading-5">
+                Export scope
+              </div>
+              <div className="flex flex-wrap items-center gap-1 py-1">
+                <button
+                  type="button"
+                  onClick={() => setScope('selected')}
+                  className={scope === 'selected' ? pillSelected : pillDefault}
+                >
+                  Selected only ({selectedAssets})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('filtered')}
+                  className={scope === 'filtered' ? pillSelected : pillDefault}
+                >
+                  Entire view ({filteredAssets} in view)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScope('all')}
+                  className={scope === 'all' ? pillSelected : pillDefault}
+                >
+                  All assets ({totalAssets} in project)
+                </button>
+              </div>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={handleClose}>
+          <DialogFooter className="flex justify-end gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={handleClose}
+              className="h-10 px-4 rounded-lg border-[#E4E4E7] text-[#312C29] font-medium"
+            >
               Cancel
             </Button>
-            <Button onClick={handleExport}>
-              <Download className="w-4 h-4 mr-2" />
-              Export Project →
+            <Button
+              onClick={handleExport}
+              className="h-10 px-4 rounded-lg bg-[#E86F25] text-[#FAFAFA] font-medium hover:bg-[#d66320]"
+            >
+              Export
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -436,6 +420,9 @@ export default function ExportProjectDialog({
 
   return null;
 }
+
+
+
 
 
 

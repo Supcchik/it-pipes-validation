@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { X, Plus, ChevronDown, ChevronRight, GripVertical, Hash, Calendar, Text, ListFilter, ToggleLeft, AlertCircle, Check, Info } from 'lucide-react';
+import { X, Plus, ChevronDown, ChevronUp, ChevronRight, GripVertical, Hash, Calendar, Text, ListFilter, ToggleLeft, AlertCircle, Check, Info, Search, LayoutGrid, Rows3 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   DndContext,
@@ -48,9 +48,44 @@ import {
   advancedFromGroups,
   groupsFromAdvanced,
   buildAdvancedFilterPreview,
+  buildGroupFilterPreview,
 } from '@/lib/utils/filter-utils';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import FilterGroupsEditor from './FilterGroupsEditor';
 import AdvancedFiltersEditor from './AdvancedFiltersEditor';
+
+/** Рендер превʼю фільтра з підсвіченими операторами (is, and, or, contains тощо) у тултіпі. */
+function SavedFilterPreviewText({ text }: { text: string }) {
+  const operatorRegex = /(\b(?:is|and|or|not|contains)\b|starts with|greater than|less than)/gi;
+
+  return (
+    <div className="flex flex-col gap-0.5 text-sm leading-relaxed text-[#18181B]">
+      {text.split('\n').map((line, lineIdx) => {
+        if (line.trim() === '') return <div key={lineIdx} className="h-1" />;
+        const parts: (string | React.ReactNode)[] = [];
+        let lastIndex = 0;
+        let m;
+        const re = new RegExp(operatorRegex.source, 'gi');
+        while ((m = re.exec(line)) !== null) {
+          if (m.index > lastIndex) parts.push(line.slice(lastIndex, m.index));
+          parts.push(
+            <span key={`${lineIdx}-${m.index}`} className="text-[#7c3aed] font-medium">
+              {m[0]}
+            </span>
+          );
+          lastIndex = re.lastIndex;
+        }
+        if (lastIndex < line.length) parts.push(line.slice(lastIndex));
+        return (
+          <div key={lineIdx}>
+            {parts}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 interface ViewSettingsDialogProps {
   open: boolean;
@@ -88,10 +123,80 @@ export default function ViewSettingsDialog({
   const [hintDismissed, setHintDismissed] = useState(false);
   // Відстеження незбережених змін для попередження при перемиканні табів
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Щільність відображення таблиці (Compact / Comfortable)
+  const [displayDensity, setDisplayDensity] = useState<'compact' | 'comfortable'>('comfortable');
+  // Згортання секцій у табі Saved Filters
+  const [savedFilterSetsOpen, setSavedFilterSetsOpen] = useState(true);
+  const [savedAdvancedOpen, setSavedAdvancedOpen] = useState(true);
+  // Режим «Save as» у футері: показує поле назви + Save filter / Cancel
+  const [isSaveAsMode, setIsSaveAsMode] = useState(false);
+  const [saveAsFilterName, setSaveAsFilterName] = useState('');
+  // Тінь футера тільки при overflow контенту модалки
+  const scrollContentRef = useRef<HTMLDivElement>(null);
+  const [hasContentOverflow, setHasContentOverflow] = useState(false);
+
+  // Збережені фільтри для табу Saved Filters (state, щоб додавати нові при «Save filter»)
+  const [savedFilterSets, setSavedFilterSets] = useState<Array<{ id: string; name: string; state: GroupFilterState }>>(() => [
+    { id: 's1', name: 'Saved Filter Set 1', state: { type: 'groups', groups: [{ id: 'g1', name: 'Group 1', conditions: [{ id: 'c1', field: 'material', operator: 'equals', value: 'PVC', table: 'asset' }, { id: 'c2', field: 'width', operator: 'greaterThan', value: 10, table: 'asset' }] }] } },
+    { id: 's2', name: 'PVC, Grade 3 Filters', state: { type: 'groups', groups: [{ id: 'g2', name: 'Group 1', conditions: [{ id: 'c3', field: 'material', operator: 'equals', value: 'PVC', table: 'asset' }, { id: 'c4', field: 'maxGrade', operator: 'equals', value: 3, table: 'observation' }] }] } },
+    { id: 's3', name: 'Oak street warning', state: { type: 'groups', groups: [{ id: 'g3', name: 'Group 1', conditions: [{ id: 'c5', field: 'street', operator: 'contains', value: 'Oak', table: 'asset' }] }] } },
+  ]);
+  const [savedAdvancedFilters, setSavedAdvancedFilters] = useState<Array<{ id: string; name: string; state: AdvancedFilterState }>>(() => [
+    {
+      id: 'a1',
+      name: 'Advanced Filter 1',
+      state: {
+        type: 'advanced',
+        groups: [
+          {
+            id: 'ag1',
+            name: 'Group 1',
+            conditions: [
+              { id: 'ac1', field: 'material', operator: 'equals', value: 'PVC', table: 'asset', nextOperator: 'AND' },
+              { id: 'ac2', field: 'material', operator: 'equals', value: 'Clay', table: 'asset' },
+            ],
+          },
+          {
+            id: 'ag2',
+            name: 'Group 2',
+            conditions: [
+              { id: 'ac3', field: 'maxGrade', operator: 'equals', value: 3, table: 'observation', nextOperator: 'OR' },
+              { id: 'ac4', field: 'maxGrade', operator: 'equals', value: 5, table: 'observation' },
+            ],
+          },
+          {
+            id: 'ag3',
+            name: 'Group 3',
+            conditions: [
+              { id: 'ac5', field: 'hasDefects', operator: 'equals', value: false, table: 'observation' },
+            ],
+          },
+        ],
+      },
+    },
+  ]);
+
+  // Визначити overflow контенту модалки — тінь футера тільки тоді
+  useEffect(() => {
+    if (!open) return;
+    const el = scrollContentRef.current;
+    if (!el) return;
+
+    const checkOverflow = () => {
+      setHasContentOverflow(el.scrollHeight > el.clientHeight);
+    };
+
+    checkOverflow();
+    const ro = new ResizeObserver(checkOverflow);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [open, displayedColumns, filters, filterMode, groupFilters, advancedFilters, defaultTab]);
 
   // Sync state with currentView when dialog opens or view changes
   useEffect(() => {
     if (open) {
+      setIsSaveAsMode(false);
+      setSaveAsFilterName('');
       setDisplayedColumns(currentView.displayedColumns || []);
       // Визначаємо режим з View або fallback на 'simple'
       const initialMode: FilterMode =
@@ -499,24 +604,24 @@ export default function ViewSettingsDialog({
       <div
         ref={setNodeRef}
         style={style}
-        className="flex items-center justify-between p-2 hover:bg-white rounded border border-transparent hover:border-neutral-200"
+        className="flex items-center justify-between p-2 rounded gap-3 hover:bg-white/80 min-h-[40px]"
       >
-        <div className="flex items-center gap-2 flex-1">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <button
             {...attributes}
             {...listeners}
-            className="cursor-grab active:cursor-grabbing text-neutral-400 hover:text-neutral-600"
+            className="cursor-grab active:cursor-grabbing text-[#71717A] hover:text-[#09090B] shrink-0"
             aria-label="Drag to reorder"
             type="button"
           >
-            <GripVertical className="h-4 w-4" />
+            <GripVertical className="h-5 w-5" />
           </button>
-          <span className="text-sm">{col?.label}</span>
+          <span className="text-sm font-normal text-[#18181B] truncate">{col?.label}</span>
         </div>
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6"
+          className="h-5 w-5 shrink-0 text-[#09090B] hover:bg-neutral-100 rounded"
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
@@ -532,7 +637,7 @@ export default function ViewSettingsDialog({
           type="button"
           aria-label={`Remove ${col?.label}`}
         >
-          <X className="h-4 w-4" />
+          <X className="h-5 w-5" />
         </Button>
       </div>
     );
@@ -579,6 +684,46 @@ export default function ViewSettingsDialog({
     setHasUnsavedChanges(true);
   };
 
+  // Відкрити режим «Save as» у футері
+  const handleSaveAsClick = () => {
+    setIsSaveAsMode(true);
+    setSaveAsFilterName('');
+  };
+
+  // Скасувати режим «Save as», повернути звичайний футер
+  const handleSaveFilterCancel = () => {
+    setIsSaveAsMode(false);
+    setSaveAsFilterName('');
+  };
+
+  // Зберегти поточний фільтр під введеною назвою
+  const handleSaveFilter = () => {
+    const name = saveAsFilterName.trim();
+    if (!name) return;
+
+    const id = `saved-${Date.now()}`;
+
+    if (filterMode === 'advanced' && advancedFilters) {
+      const state: AdvancedFilterState = JSON.parse(JSON.stringify(advancedFilters));
+      setSavedAdvancedFilters((prev) => [...prev, { id, name, state }]);
+    } else {
+      let groupsState: GroupFilterState;
+      if (filterMode === 'simple') {
+        groupsState = groupsFromSimple({ type: 'simple', conditions: filters });
+      } else if (filterMode === 'groups' && groupFilters) {
+        groupsState = JSON.parse(JSON.stringify(groupFilters));
+      } else if (filterMode === 'saved' && currentView.filters?.length) {
+        groupsState = groupsFromSimple(simpleFromLegacy(currentView.filters));
+      } else {
+        groupsState = { type: 'groups', groups: [] };
+      }
+      setSavedFilterSets((prev) => [...prev, { id, name, state: groupsState }]);
+    }
+
+    setIsSaveAsMode(false);
+    setSaveAsFilterName('');
+  };
+
   // Визначаємо, яку секцію показувати
   // Якщо defaultTab не заданий - показуємо обидві (backward compatibility)
   // Якщо defaultTab='columns' - тільки Columns
@@ -586,434 +731,476 @@ export default function ViewSettingsDialog({
   const showColumns = !defaultTab || defaultTab === 'columns';
   const showFilters = !defaultTab || defaultTab === 'filters';
 
+  const isColumnsOnly = defaultTab === 'columns';
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className={cn(
+          'max-h-[90vh] overflow-hidden flex flex-col p-6 rounded-2xl border border-[#E4E4E7] bg-white',
+          'shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)]',
+          isColumnsOnly ? 'w-[480px] min-w-[480px] max-w-[calc(100vw-2rem)]' : defaultTab === 'filters' ? 'w-[640px] min-w-[480px] max-w-[calc(100vw-2rem)]' : 'max-w-2xl w-full'
+        )}
+      >
         <DialogHeader className="pb-4">
-          <DialogTitle>
-            {defaultTab === 'filters' ? 'Filter Settings' : defaultTab === 'columns' ? 'Column Settings' : 'View Settings'}
+          <DialogTitle className="text-[#09090B] text-lg font-semibold leading-7">
+            {defaultTab === 'filters' ? 'Filters' : defaultTab === 'columns' ? 'Columns Settings' : 'View Settings'}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col overflow-hidden overflow-y-auto">
-          {/* Columns Section */}
+        <div
+          ref={scrollContentRef}
+          className="flex-1 flex flex-col overflow-hidden overflow-y-auto gap-4"
+        >
+          {/* Columns Section — макет: search, Currently displayed, All fields, Display density */}
           {showColumns && (
-          <div className="space-y-6 pb-6 border-b mb-6">
-            <h2 className="text-base font-semibold text-neutral-900">Columns</h2>
+          <div className="flex flex-col gap-4 pb-4">
             {/* Search */}
-            <div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#09090B]" />
               <Input
-                placeholder="Search columns..."
+                placeholder="Search columns"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full"
+                className="w-full min-h-9 pl-10 pr-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white placeholder:text-[#71717A] text-sm"
               />
             </div>
 
-            <div className="space-y-6">
-              {/* Currently Displayed */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-neutral-700">
-                  Currently Displayed ({displayedColumns.length}):
-                </h3>
-                <div className="space-y-1 border rounded-md p-2 bg-neutral-50">
-                  {displayedColumns.length === 0 ? (
-                    <p className="text-sm text-neutral-500 p-2">No columns displayed</p>
-                  ) : (
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
+            {/* Currently displayed (N): */}
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold text-[#3F3F46] leading-5">
+                Currently displayed ({displayedColumns.length}):
+              </h3>
+              <div className="p-1 rounded-lg border border-[#E4E4E7] bg-[#FAFAFA] flex flex-col">
+                {displayedColumns.length === 0 ? (
+                  <p className="text-sm text-[#71717A] p-2">No columns displayed</p>
+                ) : (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={displayedColumns}
+                      strategy={verticalListSortingStrategy}
                     >
-                      <SortableContext
-                        items={displayedColumns}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {displayedColumns.map((columnId) => {
-                          const col = getColumnDef(columnId);
-                          if (!col) return null;
-                          return (
-                            <SortableColumnItem
-                              key={columnId}
-                              columnId={columnId}
-                              onRemove={handleRemoveColumn}
-                            />
-                          );
-                        })}
-                      </SortableContext>
-                    </DndContext>
+                      {displayedColumns.map((columnId) => {
+                        const col = getColumnDef(columnId);
+                        if (!col) return null;
+                        return (
+                          <SortableColumnItem
+                            key={columnId}
+                            columnId={columnId}
+                            onRemove={handleRemoveColumn}
+                          />
+                        );
+                      })}
+                    </SortableContext>
+                  </DndContext>
+                )}
+              </div>
+            </div>
+
+            <div className="h-px bg-[#E4E4E7]" />
+
+            {/* All fields: */}
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold text-[#3F3F46] leading-5">
+                All fields:
+              </h3>
+              <div className="flex flex-col gap-2">
+                {/* Asset Fields */}
+                <div className="p-1 rounded-lg border border-[#E4E4E7] flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('asset')}
+                    className="w-full flex items-center justify-between p-2 rounded hover:bg-white/80 gap-3"
+                  >
+                    <span className="text-sm font-semibold text-[#18181B]">
+                      Asset Fields ({groupedColumns.asset.length})
+                    </span>
+                    <ChevronDown className={cn('h-4 w-4 text-[#09090B] transition-transform', expandedSections.asset && 'rotate-180')} />
+                  </button>
+                  {expandedSections.asset && (
+                    <div className="flex flex-col">
+                      {groupedColumns.asset.map((col) => {
+                        const isAdded = displayedColumns.includes(col.id);
+                        return (
+                          <div
+                            key={col.id}
+                            className="flex items-center justify-between p-2 rounded gap-3 min-h-[44px]"
+                          >
+                            <span className="text-sm font-normal text-[#18181B] flex-1">{col.label}</span>
+                            {isAdded ? (
+                              <span className="px-2 py-1 rounded-lg text-sm font-medium text-[#312C29] inline-flex items-center gap-1">
+                                <Check className="h-4 w-4" />
+                                Added
+                              </span>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto px-2 py-1 rounded-lg text-sm font-medium text-[#312C29] gap-2 hover:bg-neutral-100"
+                                onClick={() => handleAddColumn(col.id)}
+                              >
+                                <Plus className="h-4 w-4" />
+                                Add
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Inspection Fields */}
+                <div className="p-1 rounded-lg border border-[#E4E4E7] flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('inspection')}
+                    className="w-full flex items-center justify-between p-2 rounded hover:bg-white/80 gap-3"
+                  >
+                    <span className="text-sm font-semibold text-[#18181B]">
+                      Inspection Fields ({groupedColumns.inspection.length})
+                    </span>
+                    <ChevronDown className={cn('h-4 w-4 text-[#09090B] transition-transform', expandedSections.inspection && 'rotate-180')} />
+                  </button>
+                  {expandedSections.inspection && (
+                    <div className="flex flex-col">
+                      {groupedColumns.inspection.map((col) => {
+                        const isAdded = displayedColumns.includes(col.id);
+                        return (
+                          <div
+                            key={col.id}
+                            className="flex items-center justify-between p-2 rounded gap-3 min-h-[44px]"
+                          >
+                            <span className="text-sm font-normal text-[#18181B] flex-1">{col.label}</span>
+                            {isAdded ? (
+                              <span className="px-2 py-1 rounded-lg text-sm font-medium text-[#312C29] inline-flex items-center gap-1">
+                                <Check className="h-4 w-4" />
+                                Added
+                              </span>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto px-2 py-1 rounded-lg text-sm font-medium text-[#312C29] gap-2 hover:bg-neutral-100"
+                                onClick={() => handleAddColumn(col.id)}
+                              >
+                                <Plus className="h-4 w-4" />
+                                Add
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Observation Fields */}
+                <div className="p-1 rounded-lg border border-[#E4E4E7] flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => toggleSection('observation')}
+                    className="w-full flex items-center justify-between p-2 rounded hover:bg-white/80 gap-3"
+                  >
+                    <span className="text-sm font-semibold text-[#18181B]">
+                      Observation Fields ({groupedColumns.observation.length})
+                    </span>
+                    <ChevronDown className={cn('h-4 w-4 text-[#09090B] transition-transform', expandedSections.observation && 'rotate-180')} />
+                  </button>
+                  {expandedSections.observation && (
+                    <div className="flex flex-col">
+                      {groupedColumns.observation.map((col) => {
+                        const isAdded = displayedColumns.includes(col.id);
+                        return (
+                          <div
+                            key={col.id}
+                            className="flex items-center justify-between p-2 rounded gap-3 min-h-[44px]"
+                          >
+                            <span className="text-sm font-normal text-[#18181B] flex-1">{col.label}</span>
+                            {isAdded ? (
+                              <span className="px-2 py-1 rounded-lg text-sm font-medium text-[#312C29] inline-flex items-center gap-1">
+                                <Check className="h-4 w-4" />
+                                Added
+                              </span>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-auto px-2 py-1 rounded-lg text-sm font-medium text-[#312C29] gap-2 hover:bg-neutral-100"
+                                onClick={() => handleAddColumn(col.id)}
+                              >
+                                <Plus className="h-4 w-4" />
+                                Add
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
+            </div>
 
-              {/* Browse All Fields */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-neutral-700">
-                  Browse All Fields
-                </h3>
-                <div className="space-y-2">
-                  {/* Asset Fields */}
-                  <div className="border rounded-md">
-                    <button
-                      onClick={() => toggleSection('asset')}
-                      className="w-full flex items-center justify-between p-2 hover:bg-neutral-50"
-                    >
-                      <span className="text-sm font-medium">
-                        Asset Fields ({groupedColumns.asset.length})
-                      </span>
-                      {expandedSections.asset ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </button>
-                    {expandedSections.asset && (
-                      <div className="p-2 space-y-1">
-                        {groupedColumns.asset.map((col) => {
-                          const isAdded = displayedColumns.includes(col.id);
-                          return (
-                            <div
-                              key={col.id}
-                              className="flex items-center justify-between p-2 hover:bg-neutral-50 rounded"
-                            >
-                              <span className="text-sm">{col.label}</span>
-                              {!isAdded && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6"
-                                  onClick={() => handleAddColumn(col.id)}
-                                >
-                                  <Plus className="h-3 w-3 mr-1" />
-                                  Add
-                                </Button>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+            <div className="h-px bg-[#E4E4E7]" />
 
-                  {/* Inspection Fields */}
-                  <div className="border rounded-md">
-                    <button
-                      onClick={() => toggleSection('inspection')}
-                      className="w-full flex items-center justify-between p-2 hover:bg-neutral-50"
-                    >
-                      <span className="text-sm font-medium">
-                        Inspection Fields ({groupedColumns.inspection.length})
-                      </span>
-                      {expandedSections.inspection ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </button>
-                    {expandedSections.inspection && (
-                      <div className="p-2 space-y-1">
-                        {groupedColumns.inspection.map((col) => {
-                          const isAdded = displayedColumns.includes(col.id);
-                          return (
-                            <div
-                              key={col.id}
-                              className="flex items-center justify-between p-2 hover:bg-neutral-50 rounded"
-                            >
-                              <span className="text-sm">{col.label}</span>
-                              {!isAdded && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6"
-                                  onClick={() => handleAddColumn(col.id)}
-                                >
-                                  <Plus className="h-3 w-3 mr-1" />
-                                  Add
-                                </Button>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Observation Fields */}
-                  <div className="border rounded-md">
-                    <button
-                      onClick={() => toggleSection('observation')}
-                      className="w-full flex items-center justify-between p-2 hover:bg-neutral-50"
-                    >
-                      <span className="text-sm font-medium">
-                        Observation Fields ({groupedColumns.observation.length})
-                      </span>
-                      {expandedSections.observation ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </button>
-                    {expandedSections.observation && (
-                      <div className="p-2 space-y-1">
-                        {groupedColumns.observation.map((col) => {
-                          const isAdded = displayedColumns.includes(col.id);
-                          return (
-                            <div
-                              key={col.id}
-                              className="flex items-center justify-between p-2 hover:bg-neutral-50 rounded"
-                            >
-                              <span className="text-sm">{col.label}</span>
-                              {!isAdded && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-6"
-                                  onClick={() => handleAddColumn(col.id)}
-                                >
-                                  <Plus className="h-3 w-3 mr-1" />
-                                  Add
-                                </Button>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
+            {/* Display density */}
+            <div className="flex flex-col gap-2 pb-4">
+              <h3 className="text-sm font-semibold text-[#3F3F46] leading-5">
+                Display density:
+              </h3>
+              <div className="flex p-1 rounded-lg bg-[#F4F4F5] w-full max-w-[400px]">
+                <button
+                  type="button"
+                  onClick={() => setDisplayDensity('compact')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded text-sm font-medium transition-colors',
+                    displayDensity === 'compact'
+                      ? 'bg-white text-[#18181B] shadow-[0px_2px_4px_rgba(0,0,0,0.12)]'
+                      : 'text-[#71717A] hover:text-[#3F3F46]'
+                  )}
+                >
+                  <Rows3 className="h-4 w-4" />
+                  Compact
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDisplayDensity('comfortable')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 py-1.5 px-3 rounded text-sm font-medium transition-colors',
+                    displayDensity === 'comfortable'
+                      ? 'bg-white text-[#18181B] shadow-[0px_2px_4px_rgba(0,0,0,0.12)]'
+                      : 'text-[#71717A] hover:text-[#3F3F46]'
+                  )}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Comfortable
+                </button>
               </div>
             </div>
           </div>
           )}
 
-          {/* Filters Section: Tabs для Simple / Filter Sets / Advanced */}
+          {/* Filters Section — макет: таби в пілюлях, Active filters (N), картки #F3E8FF, Add filter, footer */}
           {showFilters && (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <Tabs
               value={filterMode}
               onValueChange={(val) => handleModeChange(val as FilterMode)}
               className="w-full"
             >
-              <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
+              <TabsList className="w-full p-1 rounded-lg bg-[#F4F4F5] flex gap-0 h-auto">
                 <TabsTrigger
                   value="simple"
-                  className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-orange-500 data-[state=active]:bg-transparent rounded-none"
+                  className={cn(
+                    'flex-1 py-1.5 px-3 rounded text-sm font-medium transition-colors',
+                    'data-[state=inactive]:text-[#71717A] data-[state=active]:bg-white data-[state=active]:text-[#18181B] data-[state=active]:shadow-[0px_2px_4px_rgba(0,0,0,0.12)]'
+                  )}
                 >
                   Simple
                 </TabsTrigger>
                 <TabsTrigger
                   value="groups"
-                  className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-orange-500 data-[state=active]:bg-transparent rounded-none"
+                  className={cn(
+                    'flex-1 py-1.5 px-3 rounded text-sm font-medium transition-colors',
+                    'data-[state=inactive]:text-[#71717A] data-[state=active]:bg-white data-[state=active]:text-[#18181B] data-[state=active]:shadow-[0px_2px_4px_rgba(0,0,0,0.12)]'
+                  )}
                 >
                   Filter Sets
                 </TabsTrigger>
                 <TabsTrigger
                   value="advanced"
-                  className="px-4 py-2 text-sm data-[state=active]:border-b-2 data-[state=active]:border-orange-500 data-[state=active]:bg-transparent rounded-none"
+                  className={cn(
+                    'flex-1 py-1.5 px-3 rounded text-sm font-medium transition-colors',
+                    'data-[state=inactive]:text-[#71717A] data-[state=active]:bg-white data-[state=active]:text-[#18181B] data-[state=active]:shadow-[0px_2px_4px_rgba(0,0,0,0.12)]'
+                  )}
                 >
                   Advanced
                 </TabsTrigger>
+                <TabsTrigger
+                  value="saved"
+                  className={cn(
+                    'flex-1 py-1.5 px-3 rounded text-sm font-medium transition-colors',
+                    'data-[state=inactive]:text-[#71717A] data-[state=active]:bg-white data-[state=active]:text-[#18181B] data-[state=active]:shadow-[0px_2px_4px_rgba(0,0,0,0.12)]'
+                  )}
+                >
+                  Saved Filters
+                </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="simple" className="space-y-4 pt-4 mt-0">
-                {/* Інфо: всі фільтри працюють разом (AND) */}
-                <div className="flex items-start gap-2 px-3 py-2 rounded-md border border-blue-200 bg-blue-50">
-                  <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <p className="text-xs text-blue-900">
-                    All filters work together (AND logic). Assets must match all filters you add here.
-                  </p>
-                </div>
+              <TabsContent value="simple" className="flex flex-col gap-4 pt-4 mt-0">
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-sm font-semibold text-[#3F3F46] leading-5">
+                    Active filters ({filters.length}):
+                  </h3>
+                  <div className="p-1 rounded-lg border border-[#E4E4E7] flex flex-col gap-1">
+                    {filters.length === 0 ? (
+                      <p className="text-sm text-[#71717A] p-2 text-center">
+                        No filters applied
+                      </p>
+                    ) : (
+                      filters.map((filter) => {
+                        const col = getFilterableColumns().find(
+                          c => c.id === filter.field && c.table === filter.table
+                        );
+                        const fieldType = col?.type || 'text';
+                        const availableOperators = getOperatorsForField(fieldType);
 
-                <div className="space-y-4">
-                  {/* Active Filters */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-neutral-700">
-                        Active Filters ({filters.length}):
-                      </h3>
-                    </div>
-                    <div className="space-y-2 border rounded-md p-2 bg-neutral-50">
-                      {filters.length === 0 ? (
-                        <p className="text-sm text-neutral-500 p-2 text-center">
-                          No filters applied
-                        </p>
-                      ) : (
-                        filters.map((filter) => {
-                          const col = getFilterableColumns().find(
-                            c => c.id === filter.field && c.table === filter.table
-                          );
-                          const fieldType = col?.type || 'text';
-                          const availableOperators = getOperatorsForField(fieldType);
-
-                          return (
-                            <div
-                              key={filter.id}
-                              className={`flex items-center gap-2 p-3 rounded-lg border ${getFieldTypeColor(fieldType)}`}
+                        return (
+                          <div
+                            key={filter.id}
+                            className="flex items-center gap-3 p-2 rounded bg-[#F3E8FF]"
+                          >
+                            {/* Field Selector */}
+                            <Select
+                              value={`${filter.table}:${filter.field}`}
+                              onValueChange={(value) => {
+                                const [table, field] = value.split(':');
+                                const newFieldType = getFieldType(field, table as FilterConfig['table']);
+                                const newOperators = getOperatorsForField(newFieldType);
+                                handleUpdateFilter(filter.id, {
+                                  field,
+                                  table: table as FilterConfig['table'],
+                                  operator: newOperators.includes(filter.operator) 
+                                    ? filter.operator 
+                                    : newOperators[0],
+                                  value: ''
+                                });
+                              }}
                             >
-                              {/* Type Icon */}
-                              <div className="flex-shrink-0">
-                                {getTypeIcon(fieldType)}
-                              </div>
+                              <SelectTrigger className="flex-1 min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm font-normal text-[#18181B] focus:ring-[#E86F25]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {getFilterableColumns().map((col) => (
+                                  <SelectItem 
+                                    key={`${col.table}:${col.id}`} 
+                                    value={`${col.table}:${col.id}`}
+                                  >
+                                    {col.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
 
-                              {/* Field Selector */}
+                            {/* Operator Selector */}
+                            <Select
+                              value={filter.operator}
+                              onValueChange={(value) => {
+                                handleUpdateFilter(filter.id, {
+                                  operator: value as FilterConfig['operator']
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="w-[140px] min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm font-normal text-[#18181B]">
+                                <SelectValue>
+                                  {filter.operator === 'equals' ? 'is' : 
+                                   filter.operator === 'contains' ? 'contains' :
+                                   filter.operator === 'startsWith' ? 'starts with' :
+                                   filter.operator === 'greaterThan' ? 'greater than' :
+                                   filter.operator === 'lessThan' ? 'less than' : filter.operator}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableOperators.map((op) => (
+                                  <SelectItem key={op} value={op}>
+                                    {op === 'equals' ? 'is' : 
+                                     op === 'contains' ? 'contains' :
+                                     op === 'startsWith' ? 'Starts with' :
+                                     op === 'greaterThan' ? 'Greater than' :
+                                     op === 'lessThan' ? 'Less than' : op}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* Value Input */}
+                            {fieldType === 'select' ? (
                               <Select
-                                value={`${filter.table}:${filter.field}`}
+                                value={String(filter.value || '')}
                                 onValueChange={(value) => {
-                                  const [table, field] = value.split(':');
-                                  const newFieldType = getFieldType(field, table as FilterConfig['table']);
-                                  const newOperators = getOperatorsForField(newFieldType);
-                                  handleUpdateFilter(filter.id, {
-                                    field,
-                                    table: table as FilterConfig['table'],
-                                    operator: newOperators.includes(filter.operator) 
-                                      ? filter.operator 
-                                      : newOperators[0],
-                                    value: ''
-                                  });
+                                  handleUpdateFilter(filter.id, { value });
                                 }}
                               >
-                                <SelectTrigger className="w-40 h-7 text-xs bg-white border-0 shadow-none focus:ring-0">
-                                  <SelectValue />
+                                <SelectTrigger className="w-[140px] min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm font-normal text-[#18181B]">
+                                  <SelectValue placeholder="Select value" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {getFilterableColumns().map((col) => (
-                                    <SelectItem 
-                                      key={`${col.table}:${col.id}`} 
-                                      value={`${col.table}:${col.id}`}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        {getTypeIcon(col.type)}
-                                        {col.label}
-                                      </div>
-                                    </SelectItem>
-                                  ))}
+                                  {filter.field === 'material' && (
+                                    <>
+                                      <SelectItem value="PVC">PVC</SelectItem>
+                                      <SelectItem value="Clay">Clay</SelectItem>
+                                      <SelectItem value="Concrete">Concrete</SelectItem>
+                                      <SelectItem value="HDPE">HDPE</SelectItem>
+                                    </>
+                                  )}
+                                  {filter.field === 'direction' && (
+                                    <>
+                                      <SelectItem value="Upstream">Upstream</SelectItem>
+                                      <SelectItem value="Downstream">Downstream</SelectItem>
+                                    </>
+                                  )}
+                                  {filter.field === 'hasDefects' && (
+                                    <>
+                                      <SelectItem value="true">Yes</SelectItem>
+                                      <SelectItem value="false">No</SelectItem>
+                                    </>
+                                  )}
                                 </SelectContent>
                               </Select>
-
-                              {/* Operator Selector with Icon */}
-                              <Select
-                                value={filter.operator}
-                                onValueChange={(value) => {
+                            ) : fieldType === 'number' ? (
+                              <Input
+                                type="number"
+                                value={filter.value as number || ''}
+                                onChange={(e) => {
                                   handleUpdateFilter(filter.id, {
-                                    operator: value as FilterConfig['operator']
+                                    value: e.target.value ? Number(e.target.value) : ''
                                   });
                                 }}
-                              >
-                                <SelectTrigger className="w-32 h-7 text-xs bg-white border-0 shadow-none focus:ring-0 flex items-center gap-1">
-                                  <SelectValue>
-                                    <div className="flex items-center gap-1">
-                                      {getOperatorIcon(filter.operator)}
-                                      <span className="text-xs">
-                                        {filter.operator === 'equals' ? '=' : 
-                                         filter.operator === 'contains' ? 'contains' :
-                                         filter.operator === 'startsWith' ? 'starts' :
-                                         filter.operator === 'greaterThan' ? '>' :
-                                         filter.operator === 'lessThan' ? '<' : filter.operator}
-                                      </span>
-                                    </div>
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableOperators.map((op) => (
-                                    <SelectItem key={op} value={op}>
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-neutral-500">{getOperatorIcon(op)}</span>
-                                        <span>
-                                          {op === 'equals' ? 'Equals' : 
-                                           op === 'contains' ? 'Contains' :
-                                           op === 'startsWith' ? 'Starts with' :
-                                           op === 'greaterThan' ? 'Greater than' :
-                                           op === 'lessThan' ? 'Less than' : op}
-                                        </span>
-                                      </div>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                className="w-[140px] min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm font-normal text-[#18181B]"
+                                placeholder="Value"
+                              />
+                            ) : fieldType === 'date' ? (
+                              <Input
+                                type="date"
+                                value={filter.value as string || ''}
+                                onChange={(e) => {
+                                  handleUpdateFilter(filter.id, { value: e.target.value });
+                                }}
+                                className="w-[140px] min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm"
+                              />
+                            ) : (
+                              <Input
+                                type="text"
+                                value={filter.value as string || ''}
+                                onChange={(e) => {
+                                  handleUpdateFilter(filter.id, { value: e.target.value });
+                                }}
+                                className="w-[140px] min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm font-normal text-[#18181B]"
+                                placeholder="Value"
+                              />
+                            )}
 
-                              {/* Value Input */}
-                              {fieldType === 'select' ? (
-                                <Select
-                                  value={String(filter.value || '')}
-                                  onValueChange={(value) => {
-                                    handleUpdateFilter(filter.id, { value });
-                                  }}
-                                >
-                                  <SelectTrigger className="flex-1 h-7 text-xs border-0 bg-transparent shadow-none focus:ring-0">
-                                    <SelectValue placeholder="Select value" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {filter.field === 'material' && (
-                                      <>
-                                        <SelectItem value="PVC">PVC</SelectItem>
-                                        <SelectItem value="Clay">Clay</SelectItem>
-                                        <SelectItem value="Concrete">Concrete</SelectItem>
-                                        <SelectItem value="HDPE">HDPE</SelectItem>
-                                      </>
-                                    )}
-                                    {filter.field === 'direction' && (
-                                      <>
-                                        <SelectItem value="Upstream">Upstream</SelectItem>
-                                        <SelectItem value="Downstream">Downstream</SelectItem>
-                                      </>
-                                    )}
-                                    {filter.field === 'hasDefects' && (
-                                      <>
-                                        <SelectItem value="true">Yes</SelectItem>
-                                        <SelectItem value="false">No</SelectItem>
-                                      </>
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              ) : fieldType === 'number' ? (
-                                <Input
-                                  type="number"
-                                  value={filter.value as number || ''}
-                                  onChange={(e) => {
-                                    handleUpdateFilter(filter.id, {
-                                      value: e.target.value ? Number(e.target.value) : ''
-                                    });
-                                  }}
-                                  className="flex-1 h-7 text-xs border-0 bg-transparent shadow-none focus-visible:ring-0"
-                                  placeholder="Enter value"
-                                />
-                              ) : fieldType === 'date' ? (
-                                <Input
-                                  type="date"
-                                  value={filter.value as string || ''}
-                                  onChange={(e) => {
-                                    handleUpdateFilter(filter.id, { value: e.target.value });
-                                  }}
-                                  className="flex-1 h-7 text-xs border-0 bg-transparent shadow-none focus-visible:ring-0"
-                                />
-                              ) : (
-                                <Input
-                                  type="text"
-                                  value={filter.value as string || ''}
-                                  onChange={(e) => {
-                                    handleUpdateFilter(filter.id, { value: e.target.value });
-                                  }}
-                                  className="flex-1 h-7 text-xs bg-white border-0 shadow-none focus-visible:ring-0"
-                                  placeholder="Enter value"
-                                />
-                              )}
-
-                              {/* Remove Button */}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 hover:bg-white"
-                                onClick={() => handleRemoveFilter(filter.id)}
-                                type="button"
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-5 w-5 shrink-0 text-[#09090B] hover:bg-white/80 rounded"
+                              onClick={() => handleRemoveFilter(filter.id)}
+                              type="button"
+                              aria-label="Remove filter"
+                            >
+                              <X className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
+                </div>
 
                   {/* Preview Count (залишаємо як додатковий індикатор) */}
                   {filters.length > 0 && previewCount !== null && (
@@ -1087,17 +1274,16 @@ export default function ViewSettingsDialog({
                     </div>
                   )}
 
-                  {/* Add Filter Button */}
+                  {/* Add Filter Button — макет: ghost, full width, h-10, rounded-lg, Plus зліва, текст 14px #312C29 */}
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={handleAddFilter}
-                    className="w-full"
+                    className="w-full h-10 px-4 py-2 rounded-lg justify-center gap-2 text-[#312C29] text-sm font-medium hover:bg-neutral-100"
                   >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Filter
+                    <Plus className="h-4 w-4" />
+                    Add filter
                   </Button>
-                </div>
               </TabsContent>
 
               <TabsContent value="groups" className="space-y-4 pt-4 mt-0">
@@ -1136,6 +1322,80 @@ export default function ViewSettingsDialog({
                     </Button>
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="saved" className="space-y-4 pt-4 mt-0">
+                {/* Секція Filter Sets — згортання, список з тултіпами */}
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSavedFilterSetsOpen((v) => !v)}
+                    className="flex items-center justify-between w-full text-left text-sm font-semibold text-[#3F3F46] leading-5 py-1"
+                  >
+                    Filter Sets ({savedFilterSets.length})
+                    {savedFilterSetsOpen ? (
+                      <ChevronUp className="h-4 w-4 text-[#71717A]" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-[#71717A]" />
+                    )}
+                  </button>
+                  {savedFilterSetsOpen && (
+                    <div className="flex flex-col gap-1 pl-0">
+                      {savedFilterSets.map((item) => {
+                        const preview = buildGroupFilterPreview(item.state);
+                        return (
+                          <Tooltip key={item.id}>
+                            <TooltipTrigger asChild>
+                              <div className="text-sm text-[#18181B] py-1.5 px-2 rounded-md hover:bg-[#F4F4F5] cursor-default w-full">
+                                {item.name}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-sm">
+                              <div className="font-semibold text-[#18181B] mb-1">{item.name}</div>
+                              <SavedFilterPreviewText text={preview} />
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Секція Advanced filters — згортання, список з тултіпами */}
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSavedAdvancedOpen((v) => !v)}
+                    className="flex items-center justify-between w-full text-left text-sm font-semibold text-[#3F3F46] leading-5 py-1"
+                  >
+                    Advanced filters ({savedAdvancedFilters.length})
+                    {savedAdvancedOpen ? (
+                      <ChevronUp className="h-4 w-4 text-[#71717A]" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-[#71717A]" />
+                    )}
+                  </button>
+                  {savedAdvancedOpen && (
+                    <div className="flex flex-col gap-1 pl-0">
+                      {savedAdvancedFilters.map((item) => {
+                        const preview = buildAdvancedFilterPreview(item.state);
+                        return (
+                          <Tooltip key={item.id}>
+                            <TooltipTrigger asChild>
+                              <div className="text-sm text-[#18181B] py-1.5 px-2 rounded-md hover:bg-[#F4F4F5] cursor-default w-full">
+                                {item.name}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-sm">
+                              <div className="font-semibold text-[#18181B] mb-1">{item.name}</div>
+                              <SavedFilterPreviewText text={preview} />
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </TabsContent>
 
               <TabsContent value="advanced" className="space-y-4 pt-4 mt-0">
@@ -1187,26 +1447,83 @@ export default function ViewSettingsDialog({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-between items-center gap-2 pt-4 border-t mt-4">
-          {showFilters && (
-            <Button
-              variant="outline"
-              onClick={handleClearCurrentMode}
-              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-            >
-              Clear
-            </Button>
+        {/* Footer — тінь тільки при overflow контенту */}
+        <div
+          className={cn(
+            'flex flex-col justify-end pt-4 pb-6 border-t border-[#E4E4E7] mt-auto shrink-0 -mx-6 -mb-6 px-6 pb-6 bg-white',
+            hasContentOverflow && 'shadow-[0px_6px_29px_rgba(100,100,111,0.20)]'
           )}
-          {!showFilters && <div />}
-          <div className="flex gap-2 ml-auto">
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave}>
-              Apply
-            </Button>
-          </div>
+        >
+          {showFilters && isSaveAsMode ? (
+            /* Режим «Save as»: поле назви, Save filter (disabled поки назва порожня), Cancel */
+            <div className="flex flex-1 items-start gap-4">
+              <div className="flex-1 flex flex-col gap-1 min-w-0">
+                <Input
+                  placeholder="Enter filter name"
+                  value={saveAsFilterName}
+                  onChange={(e) => setSaveAsFilterName(e.target.value)}
+                  className="min-h-9 px-3 py-2.5 rounded-md border border-[#E4E4E7] bg-white text-sm text-[#18181B] placeholder:text-[#71717A]"
+                  autoFocus
+                />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  type="button"
+                  disabled={!saveAsFilterName.trim()}
+                  onClick={handleSaveFilter}
+                  className="h-10 px-4 py-2 rounded-lg bg-[#E86F25] text-[#FAFAFA] text-sm font-medium hover:bg-[#d65a1a] disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  Save filter
+                </Button>
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={handleSaveFilterCancel}
+                  className="h-10 px-4 py-2 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium hover:bg-neutral-50"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-between items-center gap-2">
+              {showFilters && (
+                <Button
+                  variant="link"
+                  onClick={handleClearCurrentMode}
+                  className="h-10 px-4 py-2 rounded-lg text-[#312C29] text-sm font-medium hover:no-underline"
+                >
+                  Clear
+                </Button>
+              )}
+              {!showFilters && <div />}
+              <div className="flex gap-2 ml-auto">
+                {showFilters && (
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    className="h-10 px-4 py-2 rounded-lg text-[#312C29] text-sm font-medium hover:bg-neutral-100"
+                    onClick={handleSaveAsClick}
+                  >
+                    Save as
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="h-10 px-4 py-2 rounded-lg border-[#E4E4E7] text-[#312C29] text-sm font-medium hover:bg-neutral-50"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  className="h-10 px-4 py-2 rounded-lg bg-[#E86F25] text-[#FAFAFA] text-sm font-medium hover:bg-[#d65a1a]"
+                >
+                  Apply
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

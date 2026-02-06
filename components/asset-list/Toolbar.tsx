@@ -19,14 +19,14 @@ import {
   Settings,
   MoreVertical,
   ExternalLink,
-  CheckCircle,
+  FileLock,
   FileSearch,
-  Download,
+  FolderDown,
   Copy,
   Printer,
   Filter,
   Columns,
-  MoveRight
+  FolderOutput
 } from 'lucide-react';
 import type { FilterConfig, Asset, AssetType } from '@/lib/types/asset-list';
 import SearchBar from './SearchBar';
@@ -35,7 +35,6 @@ import AssetTypeSelector from './AssetTypeSelector';
 interface ToolbarProps {
   assets: Asset[]; // НОВИЙ: для SearchBar
   onFilteredResults: (assets: Asset[] | null) => void; // НОВИЙ: результат simple search
-  onOpenAdvancedSearch: () => void; // НОВИЙ: відкрити advanced search modal
   onOpenViewSettings: () => void; // Залишено для backward compatibility
   onOpenFilters?: () => void; // НОВИЙ: Відкрити ViewSettings на вкладці Filters
   onOpenColumns?: () => void; // НОВИЙ: Відкрити ViewSettings на вкладці Columns
@@ -64,7 +63,6 @@ interface ToolbarProps {
 export default function Toolbar({
   assets,
   onFilteredResults,
-  onOpenAdvancedSearch,
   onOpenViewSettings,
   onOpenFilters,
   onOpenColumns,
@@ -84,178 +82,182 @@ export default function Toolbar({
   assetTypeLoading = false
 }: ToolbarProps) {
   const activeFiltersCount = filters.length;
+  const toolbarButtonClass =
+    'h-10 px-4 py-2 rounded-lg gap-2 text-[#312C29] text-sm font-medium hover:bg-neutral-100';
+  const dividerClass = 'w-px h-6 bg-[#D4D4D8] shrink-0';
+
   return (
     <TooltipProvider>
-      <div className="min-h-14 bg-white border-b border-neutral-200 flex flex-col">
-        {/* Top Row: Primary Actions */}
-        <div className="h-14 flex items-center justify-between px-4 gap-2">
-          {/* Group 1: Asset Type Selector + Search Bar */}
-          <div className="flex items-center gap-2">
-            {/* Asset Type Selector */}
-            {onAssetTypesChange && (
-              <>
-                <AssetTypeSelector
-                  activeTypes={activeAssetTypes}
-                  counts={assetCounts}
-                  onTypesChange={onAssetTypesChange}
-                  loading={assetTypeLoading}
-                />
-                {/* Visual Separator */}
-                <div className="h-6 w-px bg-neutral-300 mx-1" />
-              </>
-            )}
-            <SearchBar
-              assets={assets}
-              onFilteredResults={onFilteredResults}
-              onOpenAdvancedSearch={onOpenAdvancedSearch}
-              assetType={activeAssetTypes.length === 1 ? activeAssetTypes[0] : 'ML'} // For search, use first type or default
-            />
-          </div>
-
-          {/* Visual Separator */}
-          <div className="h-6 w-px bg-neutral-300 mx-2" />
-
-          {/* Group 2: Filter + Columns */}
-          <div className="flex items-center gap-2">
-            {onOpenFilters ? (
-              <Button
-                variant="ghost"
-                className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
-                onClick={onOpenFilters}
-                aria-label="Filter"
-              >
-                <Filter className="w-4 h-4" />
-                <span className="text-sm">Filter</span>
-                {activeFiltersCount > 0 && (
-                  <Badge className="ml-1 bg-orange-500 text-white text-xs h-5 px-1.5">
-                    {activeFiltersCount}
-                  </Badge>
-                )}
-              </Button>
-            ) : null}
-
-            {onOpenColumns ? (
-              <Button
-                variant="ghost"
-                className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
-                onClick={onOpenColumns}
-                aria-label="Columns"
-              >
-                <Columns className="w-4 h-4" />
-                <span className="text-sm">Columns</span>
-                {visibleColumnsCount !== undefined && (
-                  <span className="text-xs text-neutral-500 ml-1">
-                    ({visibleColumnsCount})
-                  </span>
-                )}
-              </Button>
-            ) : null}
-
-            {/* Fallback: Settings button if new props not provided */}
-            {(!onOpenFilters || !onOpenColumns) && (
-              <Tooltip>
-                <TooltipTrigger asChild>
+      <div className="bg-white border-b border-[#E4E4E7] flex items-center justify-between px-6 py-2">
+        {/* Ліва частина: Asset | Search | Filter | Columns | Report | More */}
+        <div className="flex items-center gap-4">
+          {onAssetTypesChange && (
+            <>
+              <AssetTypeSelector
+                activeTypes={activeAssetTypes}
+                counts={assetCounts}
+                onTypesChange={onAssetTypesChange}
+                loading={assetTypeLoading}
+              />
+              <div className={dividerClass} />
+            </>
+          )}
+          <SearchBar
+            assets={assets}
+            onFilteredResults={onFilteredResults}
+            assetType={activeAssetTypes.length === 1 ? activeAssetTypes[0] : 'ML'}
+          />
+          <div className={dividerClass} />
+          {onOpenFilters && (
+            <Button
+              variant="ghost"
+              className={toolbarButtonClass}
+              onClick={onOpenFilters}
+              aria-label="Filter"
+            >
+              <Filter className="w-4 h-4" />
+              <span>Filter</span>
+              {activeFiltersCount > 0 && (
+                <Badge className="ml-1 bg-orange-500 text-white text-xs h-5 px-1.5">
+                  {activeFiltersCount}
+                </Badge>
+              )}
+            </Button>
+          )}
+          {onOpenColumns && (
+            <Button
+              variant="ghost"
+              className={toolbarButtonClass}
+              onClick={onOpenColumns}
+              aria-label="Columns"
+            >
+              <Columns className="w-4 h-4" />
+              <span>Columns</span>
+              {visibleColumnsCount !== undefined && (
+                <span className="text-xs text-neutral-500 ml-1">({visibleColumnsCount})</span>
+              )}
+            </Button>
+          )}
+          {(!onOpenFilters || !onOpenColumns) && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onOpenViewSettings}
+                  className="h-10 w-10 rounded-lg"
+                  aria-label="View Settings"
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>View Settings</p>
+                <p className="text-xs text-neutral-500">Columns & Filters</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <div className={dividerClass} />
+          {onGenerateReport && (
+            <Button
+              variant="ghost"
+              className={toolbarButtonClass}
+              onClick={onGenerateReport}
+              aria-label="Generate PDF report"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Report</span>
+            </Button>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={onOpenViewSettings}
-                    className="h-10 w-10"
-                    aria-label="View Settings"
+                    className="h-10 w-10 rounded-lg text-[#312C29]"
+                    aria-label="More tools"
                   >
-                    <Settings className="h-5 w-5" />
+                    <MoreVertical className="w-4 h-4" />
                   </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>View Settings</p>
-                  <p className="text-xs text-neutral-500">Columns & Filters</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="min-w-[200px] py-1 px-1 rounded-lg border border-[#E4E4E7] bg-white shadow-[0px_2px_4px_-1px_rgba(0,0,0,0.06),0px_4px_6px_-1px_rgba(0,0,0,0.10)] [&>div]:px-1"
+                  style={{ fontFamily: 'Montserrat, sans-serif' }}
+                >
+                  <DropdownMenuItem
+                    onClick={onValidateInspections}
+                    disabled={!onValidateInspections}
+                    className="p-2 rounded-md gap-3 text-sm font-normal text-[#18181B] focus:bg-neutral-100 [&_svg]:text-[#71717A] [&_svg]:w-4 [&_svg]:h-4"
+                  >
+                    <FileLock className="shrink-0" />
+                    Validate inspections
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={onFindReplace}
+                    disabled={!onFindReplace}
+                    className="p-2 rounded-md gap-3 text-sm font-normal text-[#18181B] focus:bg-neutral-100 [&_svg]:text-[#71717A] [&_svg]:w-4 [&_svg]:h-4"
+                  >
+                    <FileSearch className="shrink-0" />
+                    Find & Replace
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="my-1 bg-[#E4E4E7]" />
+                  <DropdownMenuItem
+                    onClick={onExportProject}
+                    disabled={!onExportProject}
+                    className="p-2 rounded-md gap-3 text-sm font-normal text-[#18181B] focus:bg-neutral-100 [&_svg]:text-[#71717A] [&_svg]:w-4 [&_svg]:h-4"
+                  >
+                    <FolderDown className="shrink-0" />
+                    Export project
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={onCopyToProject}
+                    disabled={!onCopyToProject}
+                    className="p-2 rounded-md gap-3 text-sm font-normal text-[#18181B] focus:bg-neutral-100 [&_svg]:text-[#71717A] [&_svg]:w-4 [&_svg]:h-4"
+                  >
+                    <Copy className="shrink-0" />
+                    Copy to project
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={onMoveToProject}
+                    disabled={!onMoveToProject}
+                    className="p-2 rounded-md gap-3 text-sm font-normal text-[#18181B] focus:bg-neutral-100 [&_svg]:text-[#71717A] [&_svg]:w-4 [&_svg]:h-4"
+                  >
+                    <FolderOutput className="shrink-0" />
+                    Move to project
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>More tools</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
 
-          {/* Visual Separator */}
-          <div className="h-6 w-px bg-neutral-300 mx-2" />
-
-          {/* Group 3: Report + More */}
-          <div className="flex items-center gap-2">
-            {/* REPORT BUTTON - Equal visual weight with Filter/Columns */}
-            {onGenerateReport && (
-              <Button
-                variant="ghost"
-                className="gap-2 px-3 h-9 hover:bg-neutral-100 text-neutral-700"
-                onClick={onGenerateReport}
-                aria-label="Generate PDF report"
-              >
-                <Printer className="w-4 h-4" />
-                <span className="text-sm">Report</span>
-              </Button>
-            )}
-
-            {/* More Tools Dropdown */}
+        {/* Права частина: Pop-out Map */}
+        <div className="flex items-center gap-4">
+          {onPopOutMap && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-10 w-10">
-                      <MoreVertical className="h-5 w-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem onClick={onValidateInspections} disabled={!onValidateInspections}>
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      Validate Inspections
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onFindReplace} disabled={!onFindReplace}>
-                      <FileSearch className="mr-2 h-4 w-4" />
-                      Find & Replace
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={onExportProject} disabled={!onExportProject}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Export Project
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onMoveToProject} disabled={!onMoveToProject}>
-                      <MoveRight className="mr-2 h-4 w-4" />
-                      Move to Project
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onCopyToProject} disabled={!onCopyToProject}>
-                      <Copy className="mr-2 h-4 w-4" />
-                      Copy to Project
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 rounded-lg text-[#312C29]"
+                  onClick={onPopOutMap}
+                  aria-label="Pop-out Map"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>More tools</p>
+                <p>Pop-out Map</p>
+                <p className="text-xs text-neutral-500">Open map in new tab</p>
               </TooltipContent>
             </Tooltip>
-          </div>
-
-          {/* Auto-spacer */}
-          <div className="flex-1" />
-
-          {/* Group 4: Pop-out */}
-          <div className="flex items-center gap-2">
-            {onPopOutMap && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-10 w-10"
-                    onClick={onPopOutMap}
-                    aria-label="Pop-out Map"
-                  >
-                    <ExternalLink className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Pop-out Map</p>
-                  <p className="text-xs text-neutral-500">Open map in new tab</p>
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </TooltipProvider>

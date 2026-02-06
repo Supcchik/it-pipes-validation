@@ -9,19 +9,11 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Star, Edit, Trash2, Plus, Copy, Share2, MoreVertical, Users, User, Building2, Globe, Lock } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Pin, Pencil, Trash2, Plus, Copy, Share2 } from 'lucide-react';
 import ShareViewDialog from './ShareViewDialog';
 import type { View } from '@/lib/types/asset-list';
 import type { ShareLevel, ShareDetails } from './ShareViewDialog';
+import { cn } from '@/lib/utils';
 
 interface ManageViewsDialogProps {
   open: boolean;
@@ -31,16 +23,26 @@ interface ManageViewsDialogProps {
   onCreateNewView?: () => void; // НОВИЙ: callback для відкриття CreateViewDialog
 }
 
+// Chip label and style for share level
+function getShareChip(view: View): { label: string; className: string } {
+  if (!view.shareLevel || view.shareLevel === 'personal') {
+    return { label: 'Personal', className: 'bg-[#E0E7FF] text-[#1E3A8A]' };
+  }
+  if (view.shareLevel === 'companyWide') {
+    return { label: 'Shared: Company', className: 'bg-[#DCFCE7] text-[#166534]' };
+  }
+  return { label: 'Shared: Admins', className: 'bg-[#DCFCE7] text-[#166534]' };
+}
+
 export default function ManageViewsDialog({
   open,
   onClose,
   views,
   onUpdateViews,
-  onCreateNewView
+  onCreateNewView,
 }: ManageViewsDialogProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [selectedViews, setSelectedViews] = useState<string[]>([]);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [viewToShare, setViewToShare] = useState<View | null>(null);
 
@@ -100,56 +102,8 @@ export default function ManageViewsDialog({
     onUpdateViews([...views, newView]);
   };
 
-  // Create new view
   const handleCreateNew = () => {
-    if (onCreateNewView) {
-      onCreateNewView();
-    }
-  };
-
-  // Bulk actions
-  const handleSelectAll = (checked: boolean) => {
-    setSelectedViews(checked ? views.map(v => v.id) : []);
-  };
-
-  const handleSelectView = (viewId: string, checked: boolean) => {
-    setSelectedViews(prev =>
-      checked ? [...prev, viewId] : prev.filter(id => id !== viewId)
-    );
-  };
-
-  const handleBulkShare = () => {
-    if (selectedViews.length === 0) return;
-    // For bulk share, use first selected view as template
-    const firstView = views.find(v => v.id === selectedViews[0]);
-    if (firstView) {
-      setViewToShare(firstView);
-      setShareDialogOpen(true);
-    }
-  };
-
-  const handleBulkDelete = () => {
-    if (selectedViews.length === 0) return;
-    if (confirm(`Delete ${selectedViews.length} view(s)?`)) {
-      const updated = views.filter(v => !selectedViews.includes(v.id));
-      onUpdateViews(updated);
-      setSelectedViews([]);
-    }
-  };
-
-  const handleBulkDuplicate = () => {
-    if (selectedViews.length === 0) return;
-    const viewsToDuplicate = views.filter(v => selectedViews.includes(v.id));
-    const duplicated = viewsToDuplicate.map(view => ({
-      ...view,
-      id: `view-${Date.now()}-${Math.random()}`,
-      name: `${view.name} - Copy`,
-      isFavorite: false,
-      createdAt: new Date().toISOString().split('T')[0],
-      updatedAt: new Date().toISOString().split('T')[0]
-    }));
-    onUpdateViews([...views, ...duplicated]);
-    setSelectedViews([]);
+    onCreateNewView?.();
   };
 
   const handleShare = (shareLevel: ShareLevel, details: ShareDetails) => {
@@ -176,295 +130,146 @@ export default function ManageViewsDialog({
     setShareDialogOpen(true);
   };
 
+  const renderViewRow = (view: View) => {
+    const chip = getShareChip(view);
+    const isPinned = view.isFavorite;
+    if (editingId === view.id) {
+      return (
+        <div key={view.id} className="flex items-center gap-3 px-2 py-2 rounded">
+          <Input
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSaveEdit();
+              if (e.key === 'Escape') handleCancelEdit();
+            }}
+            autoFocus
+            className="flex-1 h-9 rounded-md border-[#E4E4E7]"
+          />
+          <Button size="sm" onClick={handleSaveEdit} className="h-9">Save</Button>
+          <Button size="sm" variant="outline" onClick={handleCancelEdit} className="h-9 border-[#E4E4E7]">Cancel</Button>
+        </div>
+      );
+    }
+    return (
+      <div
+        key={view.id}
+        className="flex items-center gap-3 px-2 py-2 rounded hover:bg-[#F4F4F5] transition-colors"
+      >
+        <button
+          type="button"
+          onClick={() => handleToggleFavorite(view.id)}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-[#F4F4F5]"
+          aria-label={isPinned ? 'Unpin' : 'Pin'}
+        >
+          <Pin
+            className={cn('h-4 w-4', isPinned ? 'fill-[#09090B] text-[#09090B]' : 'text-[#71717A]')}
+          />
+        </button>
+        <div className="min-w-0 flex-1 flex flex-col gap-1">
+          <span className="text-[#18181B] text-sm font-semibold leading-5 truncate">{view.name}</span>
+          <span className={cn('inline-flex h-[22px] items-center justify-center rounded-lg px-3 py-0.5 text-xs font-semibold leading-4 w-fit', chip.className)}>
+            {chip.label}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => handleStartEdit(view)}
+            className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-[#F4F4F5] text-[#18181B]"
+            aria-label="Edit"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDuplicate(view)}
+            className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-[#F4F4F5] text-[#18181B]"
+            aria-label="Duplicate"
+          >
+            <Copy className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenShare(view)}
+            className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-[#F4F4F5] text-[#18181B]"
+            aria-label="Share"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(view.id)}
+            className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-[#FEF2F2] text-[#EF4444]"
+            aria-label="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Manage Views</DialogTitle>
+      <DialogContent
+        showCloseButton={false}
+        className={cn(
+          'flex max-h-[90vh] w-full max-w-[420px] flex-col gap-4 overflow-hidden rounded-2xl border-[#E4E4E7] p-6',
+          'shadow-[0px_10px_15px_-3px_rgba(0,0,0,0.10),0px_4px_6px_-4px_rgba(16,24,40,0.10)]'
+        )}
+      >
+        <DialogHeader className="gap-0">
+          <DialogTitle className="text-[#09090B] text-lg font-semibold leading-7">
+            Manage Views
+          </DialogTitle>
         </DialogHeader>
 
-        {/* Bulk Actions Bar */}
-        {selectedViews.length > 0 && (
-          <div className="flex items-center justify-between p-3 bg-blue-50 border-b border-blue-200">
-            <span className="text-sm font-medium text-blue-900">
-              {selectedViews.length} view{selectedViews.length !== 1 ? 's' : ''} selected
-            </span>
-            <div className="flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    Bulk Actions
-                    <MoreVertical className="w-4 h-4 ml-2" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleBulkShare}>
-                    <Share2 className="w-4 h-4 mr-2" />
-                    Share...
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleBulkDuplicate}>
-                    <Copy className="w-4 h-4 mr-2" />
-                    Duplicate
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleBulkDelete} className="text-red-600">
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedViews([])}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+          {/* Favorites */}
+          <div className="flex flex-col gap-2">
+            <div className="text-[#3F3F46] text-sm font-semibold leading-5">
+              Favorites ({favoriteViews.length})
+            </div>
+            <div className="flex flex-col gap-1 rounded-lg border border-[#E4E4E7] p-1">
+              {favoriteViews.length === 0 ? (
+                <p className="px-2 py-3 text-sm text-[#71717A]">No favorites</p>
+              ) : (
+                favoriteViews.map(renderViewRow)
+              )}
+            </div>
+          </div>
+
+          <div className="h-px shrink-0 bg-[#E4E4E7]" />
+
+          {/* Other views */}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+            <div className="text-[#3F3F46] text-sm font-semibold leading-5">
+              Other views ({otherViews.length})
+            </div>
+            <div className="flex flex-1 flex-col gap-1 overflow-y-auto rounded-lg border border-[#E4E4E7] p-1">
+              {otherViews.map(renderViewRow)}
+              <div className="h-px shrink-0 bg-[#E4E4E7]" />
+              <button
+                type="button"
+                onClick={handleCreateNew}
+                className="flex h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-[#312C29] text-sm font-medium leading-5 hover:bg-[#F4F4F5]"
               >
-                Clear
-              </Button>
+                <Plus className="h-4 w-4 text-[#09090B]" />
+                Create view
+              </button>
             </div>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto space-y-6 p-4">
-          {/* Select All */}
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <Checkbox
-              checked={selectedViews.length === views.length && views.length > 0}
-              onCheckedChange={handleSelectAll}
-            />
-            <Label className="text-sm font-medium">Select All</Label>
-          </div>
-
-          {/* Favorites Section */}
-          {favoriteViews.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-neutral-700 mb-2 flex items-center gap-2">
-                <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                Favorites ({favoriteViews.length})
-              </h3>
-              <div className="space-y-2 border rounded-md p-2">
-                {favoriteViews.map((view) => (
-                  <div
-                    key={view.id}
-                    className="flex items-center justify-between p-2 hover:bg-neutral-50 rounded"
-                  >
-                    {editingId === view.id ? (
-                      <div className="flex items-center gap-2 flex-1">
-                        <Input
-                          value={editName}
-                          onChange={(e) => setEditName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveEdit();
-                            if (e.key === 'Escape') handleCancelEdit();
-                          }}
-                          autoFocus
-                          className="flex-1"
-                        />
-                        <Button size="sm" onClick={handleSaveEdit}>Save</Button>
-                        <Button size="sm" variant="outline" onClick={handleCancelEdit}>
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-start gap-2 flex-1">
-                          <Checkbox
-                            checked={selectedViews.includes(view.id)}
-                            onCheckedChange={(checked) => handleSelectView(view.id, checked as boolean)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="mt-0.5"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <Star
-                                className="h-4 w-4 fill-yellow-400 text-yellow-400 cursor-pointer flex-shrink-0"
-                                onClick={() => handleToggleFavorite(view.id)}
-                              />
-                              <span className="text-sm">{view.name}</span>
-                            </div>
-                            {/* Share indicator - below name */}
-                            <div className="mt-1 ml-6">
-                              {view.shareLevel && view.shareLevel !== 'personal' && (
-                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-600 w-fit">
-                                  {view.shareLevel === 'companyWide' && <Globe className="h-3 w-3" />}
-                                  {view.shareLevel === 'project' && <Building2 className="h-3 w-3" />}
-                                  {view.shareLevel === 'userRole' && <Users className="h-3 w-3" />}
-                                  {view.shareLevel === 'specificUsers' && <User className="h-3 w-3" />}
-                                  <span>
-                                    {view.shareLevel === 'companyWide' && 'Organization'}
-                                    {view.shareLevel === 'project' && view.sharedWith?.projectId ? `Project: ${view.sharedWith.projectId}` : 'Project'}
-                                    {view.shareLevel === 'userRole' && view.sharedWith?.userRoles?.length ? `Role: ${view.sharedWith.userRoles.join(', ')}` : 'Role'}
-                                    {view.shareLevel === 'specificUsers' && view.sharedWith?.userIds?.length ? `${view.sharedWith.userIds.length} users` : 'Users'}
-                                  </span>
-                                </div>
-                              )}
-                              {(!view.shareLevel || view.shareLevel === 'personal') && (
-                                <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-500 w-fit">
-                                  <Lock className="h-3 w-3" />
-                                  <span>Personal</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenShare(view)}
-                          >
-                            <Share2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStartEdit(view)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDuplicate(view)}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(view.id)}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* All Views Section */}
-          <div>
-            <h3 className="text-sm font-medium text-neutral-700 mb-2">
-              All Views ({views.length})
-            </h3>
-            <div className="space-y-2 border rounded-md p-2">
-              {otherViews.map((view) => (
-                <div
-                  key={view.id}
-                  className="flex items-center justify-between p-2 hover:bg-neutral-50 rounded"
-                >
-                  {editingId === view.id ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <Input
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveEdit();
-                          if (e.key === 'Escape') handleCancelEdit();
-                        }}
-                        autoFocus
-                        className="flex-1"
-                      />
-                      <Button size="sm" onClick={handleSaveEdit}>Save</Button>
-                      <Button size="sm" variant="outline" onClick={handleCancelEdit}>
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-start gap-2 flex-1">
-                        <Checkbox
-                          checked={selectedViews.includes(view.id)}
-                          onCheckedChange={(checked) => handleSelectView(view.id, checked as boolean)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-0.5"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Star
-                              className="h-4 w-4 text-neutral-400 cursor-pointer hover:text-yellow-400 flex-shrink-0"
-                              onClick={() => handleToggleFavorite(view.id)}
-                            />
-                            <span className="text-sm">{view.name}</span>
-                          </div>
-                          {/* Share indicator - below name */}
-                          <div className="mt-1 ml-6">
-                            {view.shareLevel && view.shareLevel !== 'personal' && (
-                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-600 w-fit">
-                                {view.shareLevel === 'companyWide' && <Globe className="h-3 w-3" />}
-                                {view.shareLevel === 'project' && <Building2 className="h-3 w-3" />}
-                                {view.shareLevel === 'userRole' && <Users className="h-3 w-3" />}
-                                {view.shareLevel === 'specificUsers' && <User className="h-3 w-3" />}
-                                <span>
-                                  {view.shareLevel === 'companyWide' && 'Organization'}
-                                  {view.shareLevel === 'project' && view.sharedWith?.projectId ? `Project: ${view.sharedWith.projectId}` : 'Project'}
-                                  {view.shareLevel === 'userRole' && view.sharedWith?.userRoles?.length ? `Role: ${view.sharedWith.userRoles.join(', ')}` : 'Role'}
-                                  {view.shareLevel === 'specificUsers' && view.sharedWith?.userIds?.length ? `${view.sharedWith.userIds.length} users` : 'Users'}
-                                </span>
-                              </div>
-                            )}
-                            {(!view.shareLevel || view.shareLevel === 'personal') && (
-                              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-neutral-100 text-neutral-500 w-fit">
-                                <Lock className="h-3 w-3" />
-                                <span>Personal</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleOpenShare(view)}
-                        >
-                          <Share2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleStartEdit(view)}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDuplicate(view)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(view.id)}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Create New Button */}
-          <div>
-            <Button onClick={handleCreateNew} className="w-full">
-              <Plus className="h-4 w-4 mr-2" />
-              Create New View
-            </Button>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end pt-4 border-t">
-          <Button onClick={onClose}>Close</Button>
+        <div className="flex shrink-0 justify-end gap-2 border-t border-[#E4E4E7] pt-4">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="h-10 rounded-lg border-[#E4E4E7] px-4 text-[#312C29] text-sm font-medium leading-5"
+          >
+            Close
+          </Button>
         </div>
       </DialogContent>
 

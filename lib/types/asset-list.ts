@@ -85,7 +85,7 @@ export interface ComplexFilter {
  */
 
 // Режим фільтрів для View
-export type FilterMode = 'simple' | 'groups' | 'advanced';
+export type FilterMode = 'simple' | 'groups' | 'advanced' | 'saved';
 
 // Simple level – список умов (усі AND між собою)
 export interface SimpleFilterState {
