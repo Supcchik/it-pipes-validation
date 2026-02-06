@@ -441,17 +441,14 @@ function AssetListPageContent(): React.JSX.Element {
       // Search active - use results filtered by types (even if empty array)
       filtered = simpleSearchResults.filter(asset => activeAssetTypes.includes(asset.asset_type));
     }
-    
-    if (!filtered || filtered.length === 0) {
-      return [];
-    }
+
     if (!activeView) {
-      return filtered;
+      return filtered ?? [];
     }
 
     // Apply normalized view filters (simple / groups / advanced)
     const normalized = normalizeFilters(activeView);
-    filtered = applyFilters(filtered, normalized);
+    filtered = applyFilters(filtered ?? [], normalized);
 
     // Apply temporary filters (on top of view filters)
     if (temporaryFilters.length > 0) {

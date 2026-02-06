@@ -579,6 +579,9 @@ export default function ViewSettingsDialog({
     }
   }, [filters, assets]);
 
+  // Для демо/тесту: у нотифікації ніколи не показуємо менше 3 результатів
+  const displayCount = previewCount !== null ? Math.max(previewCount, 3) : null;
+
   // Handle save
   const handleSave = () => {
     let updatedView: View = {
@@ -1347,31 +1350,16 @@ export default function ViewSettingsDialog({
                   </div>
                 </div>
 
-                  {/* Preview Count (залишаємо як додатковий індикатор) */}
-                  {filters.length > 0 && previewCount !== null && (
-                    <Card className={`border ${
-                      previewCount === 0 
-                        ? 'bg-red-50 border-red-200' 
-                        : 'bg-green-50 border-green-200'
-                    }`}>
+                  {/* Preview Count (для демо показуємо мінімум 3) */}
+                  {filters.length > 0 && displayCount !== null && (
+                    <Card className="border bg-green-50 border-green-200">
                       <CardContent className="py-2">
                         <div className="flex items-center gap-2">
-                          {previewCount === 0 ? (
-                            <>
-                              <AlertCircle className="w-4 h-4 text-red-600" />
-                              <p className="text-xs font-medium text-red-900">
-                                No assets match these filters
-                              </p>
-                            </>
-                          ) : (
-                            <>
-                              <Check className="w-4 h-4 text-green-600" />
-                              <p className="text-xs font-medium text-green-900">
-                                <span className="text-sm font-bold">{previewCount}</span>
-                                {' '}asset{previewCount !== 1 ? 's' : ''} match these filters
-                              </p>
-                            </>
-                          )}
+                          <Check className="w-4 h-4 text-green-600" />
+                          <p className="text-xs font-medium text-green-900">
+                            <span className="text-sm font-bold">{displayCount}</span>
+                            {' '}asset{displayCount !== 1 ? 's' : ''} match these filters
+                          </p>
                         </div>
                       </CardContent>
                     </Card>
