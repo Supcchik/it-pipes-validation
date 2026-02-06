@@ -135,31 +135,6 @@ export default function SnapshotsPanel({
     };
   }, []);
 
-  if (!asset && selectedAssets.length === 0) return null;
-
-  const showSnapshots = assetType === 'ML' || assetType === 'L';
-  const showDetails = assetType === 'MH';
-
-  let allSnapshots: SnapshotData[] = [];
-  if (showSnapshots) {
-    if (isMultipleSelection && selectedAssets.length > 0) {
-      selectedAssets.forEach((selectedAsset) => {
-        const assetSnapshots = generateMockSnapshots(selectedAsset);
-        const snapshotsWithAssetInfo = assetSnapshots.map((s) => ({
-          ...s,
-          assetId: selectedAsset.id,
-          assetName: selectedAsset.pipeSegment || selectedAsset.lateralId || selectedAsset.id,
-          inspectionDate: selectedAsset.latestInspection?.date || undefined,
-        }));
-        allSnapshots = [...allSnapshots, ...snapshotsWithAssetInfo];
-      });
-    } else if (asset) {
-      allSnapshots = generateMockSnapshots(asset);
-    }
-  }
-
-  const filteredSnapshots = allSnapshots.filter((s) => s.grade >= gradeMin && s.grade <= gradeMax);
-
   const positionToGrade = useCallback((clientX: number): number => {
     const el = sliderTrackRef.current;
     if (!el) return 0;
@@ -169,12 +144,6 @@ export default function SnapshotsPanel({
     return Math.max(0, Math.min(5, Math.round(raw)));
   }, []);
 
-  const handlePointerDown = (thumb: 'min' | 'max', e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    draggingRef.current = thumb;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (draggingRef.current === null) return;
@@ -203,6 +172,38 @@ export default function SnapshotsPanel({
     }
     draggingRef.current = null;
   }, []);
+
+  if (!asset && selectedAssets.length === 0) return null;
+
+  const showSnapshots = assetType === 'ML' || assetType === 'L';
+  const showDetails = assetType === 'MH';
+
+  let allSnapshots: SnapshotData[] = [];
+  if (showSnapshots) {
+    if (isMultipleSelection && selectedAssets.length > 0) {
+      selectedAssets.forEach((selectedAsset) => {
+        const assetSnapshots = generateMockSnapshots(selectedAsset);
+        const snapshotsWithAssetInfo = assetSnapshots.map((s) => ({
+          ...s,
+          assetId: selectedAsset.id,
+          assetName: selectedAsset.pipeSegment || selectedAsset.lateralId || selectedAsset.id,
+          inspectionDate: selectedAsset.latestInspection?.date || undefined,
+        }));
+        allSnapshots = [...allSnapshots, ...snapshotsWithAssetInfo];
+      });
+    } else if (asset) {
+      allSnapshots = generateMockSnapshots(asset);
+    }
+  }
+
+  const filteredSnapshots = allSnapshots.filter((s) => s.grade >= gradeMin && s.grade <= gradeMax);
+
+  const handlePointerDown = (thumb: 'min' | 'max', e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    draggingRef.current = thumb;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
 
   const handleAssign = (userId: string | null) => {
     if (userId === null || userId === 'unassign') {

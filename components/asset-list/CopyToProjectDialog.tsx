@@ -8,6 +8,8 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogHeader,
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Select,

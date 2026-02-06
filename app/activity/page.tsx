@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,6 @@ import { ACTIVITY_MOCK_ENTRIES, ACTIVITY_USERS, ACTIVITY_ACTION_TYPES, ACTIVITY_
 import type { ActivityEntry, ActivityUser, ActivityDiffRow } from '@/lib/types/activity';
 import { Search, Settings, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 /** Приглушені кольори аватарів по користувачу (фон + текст) */
 function getAvatarStyle(userName: ActivityUser): { bg: string; text: string } {
@@ -75,7 +74,6 @@ function ActivityDiffRowView({ row }: { row: ActivityDiffRow }) {
 }
 
 const DATE_PRESETS = ['Today', 'Last 7 days', 'Last 30 days', 'Custom range'] as const;
-const TOTAL_MOCK_COUNT = 47;
 
 function formatDayLabel(dateKey: string): string {
   const today = new Date();
@@ -105,7 +103,7 @@ function filterByDateRange(dateKey: string, preset: string): boolean {
   return true;
 }
 
-export default function ActivityPage() {
+function ActivityPageContent() {
   const searchParams = useSearchParams();
   const assetFromUrl = searchParams.get('asset') ?? '';
 
@@ -341,5 +339,13 @@ export default function ActivityPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function ActivityPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-neutral-50">Loading...</div>}>
+      <ActivityPageContent />
+    </Suspense>
   );
 }
